@@ -31,6 +31,9 @@ class KukaSimulator():
         # Joint damping coefficients.
         self.jd = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
 
+        # Set control position gain.
+        self.positionGain = 0.03
+
         # Environmental Physics Properties.
         pybullet.setGravity(0.0, 0.0, -9.81)
         # Enable Force torque sensing on the last joint.
