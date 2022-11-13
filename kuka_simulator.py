@@ -7,7 +7,7 @@ from scipy.spatial.transform import Rotation as R
 
 class KukaSimulator():
 
-    def __init__(self, p_gain_lin=3000, p_gain_rot=880, d_gain_lin=30, d_gain_rot=10, force_gain=0.0):
+    def __init__(self, p_gain_lin=330, p_gain_rot=3300, d_gain_lin=0.3, d_gain_rot=0.1, force_gain=0.0):
 
         # Connect to physics server.
         pybullet.connect(pybullet.GUI)
@@ -28,7 +28,7 @@ class KukaSimulator():
         # Place a small needle on top of the kuka robot.
         self.needleId = pybullet.loadURDF("/home/liangby/MEC231A-Project/needle.urdf", basePosition=[0.0, 0.0, 1.4])
         print(pybullet)
-        pybullet.createConstraint(
+        self.constraintId = pybullet.createConstraint(
             parentBodyUniqueId=self.kukaId,
             parentLinkIndex=self.kukaEndEffectorIndex,
             childBodyUniqueId=self.needleId,
@@ -38,6 +38,7 @@ class KukaSimulator():
             parentFramePosition=[0.0, 0.0, 0.06],
             childFramePosition=[0.0, 0.0, 0.0]
         )
+        pybullet.changeConstraint(self.constraintId, erp=5000.0)
 
         # Start realtime simulation.
         pybullet.setRealTimeSimulation(1)
@@ -68,6 +69,11 @@ class KukaSimulator():
         pybullet.setGravity(0.0, 0.0, -9.81)
         # Enable Force torque sensing on the last joint.
         pybullet.enableJointForceTorqueSensor(self.kukaId, self.numJoints - 1, enableSensor=True)
+
+    #####################################################################
+    #  The following methods can be used for general control purpose.   #
+    #  Configuration space PD control rule is used here                 #
+    #####################################################################
 
     def move2InitialPose(self):
         """Move the Kuka robot to its initial position to start the experiment.
@@ -141,6 +147,66 @@ class KukaSimulator():
         result = pybullet.getJointState(self.kukaId, self.numJoints - 1)[2]
         return np.array(result)
 
+    def computeTargetIK(
+        self,
+        targetPosition: np.array,
+        targetOrientation: np.array = pybullet.getQuaternionFromEuler([0, -np.pi, 0])
+    ) -> np.array:
+        """Get the joint positions given the target end effector position and orientation.
+
+        Args:
+            targetPosition (np.array): shape(3,), the target position.
+            targetOrientation (np.array): shape(4,), the target orientation.
+
+        Returns:
+            np.array: the target joint position.
+        """
+        jPos = pybullet.calculateInverseKinematics(
+            bodyUniqueId=self.kukaId,
+            endEffectorLinkIndex=self.kukaEndEffectorIndex,
+            targetPosition=targetPosition,
+            targetOrientation=targetOrientation,
+            lowerLimits=self.ll,
+            upperLimits=self.ul,
+            jointRanges=self.jr,
+            restPoses=self.rp
+        )
+        return np.array(jPos)
+
+    def setTargetJPos(
+        self,
+        jPos: np.array,
+        jVel: np.array = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        forces: np.array = np.array([500, 500, 500, 500, 500, 500, 500]),
+        pGains: np.array = np.array([0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03]),
+        vGains: np.array = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    ):
+        """set the attraction point in the configuration space.
+        Set large position gain but small discrepancy for consistance force.
+
+        Args:
+            jPos (np.array): the position attraction point in configuration space.
+            jVel (np.array, optional): the velocity sttraction point in configuration space. Defaults to np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).
+            forces (np.array, optional): maximum torque on each joint. Defaults to np.array([500, 500, 500, 500, 500, 500, 500]).
+            pGains (np.array, optional): position gain. Defaults to np.array([0.03, 0.03, 0.03, 0.03, 0.03, 0.03, 0.03]).
+            vGains (np.array, optional): velocity gain. Defaults to np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]).
+        """
+        pybullet.setJointMotorControlArray(
+            bodyIndex=self.kukaId,
+            jointIndices=range(self.numJoints),
+            controlMode=pybullet.POSITION_CONTROL,
+            targetPositions=jPos.tolist(),
+            targetVelocities=jVel.tolist(),
+            forces=forces,
+            positionGains=pGains,
+            velocityGains=vGains
+        )
+
+    ###########################################################
+    # I tried to build a torque-based impedance control here  #
+    # But it does not seem to work well, even in simulator    #
+    ###########################################################
+
     def calculateEEJacobian(self) -> np.array:
         """Get the Jacobian matrix, x_dot=J * p_dot, where x=(position, rotation)
 
@@ -213,7 +279,8 @@ class KukaSimulator():
         position_gain = np.diag([self.p_gain_lin, self.p_gain_lin, self.p_gain_lin, self.p_gain_rot, self.p_gain_rot, self.p_gain_rot])
         damping_gain = np.diag([self.d_gain_lin, self.d_gain_lin, self.d_gain_lin, self.d_gain_rot, self.d_gain_rot, self.d_gain_rot])
         force_gain = np.array([self.force_gain for i in range(6)])
-        return op_mass @ (position_gain @ pos_diff + damping_gain @ vel_diff) + force_gain * force_diff
+        gravity_gain = np.array([0.0, 0.0, 9.81, 0.0, 0.0, 0.0])
+        return op_mass @ (position_gain @ pos_diff + damping_gain @ vel_diff + gravity_gain) + force_gain * force_diff
 
     def exertJointTorques(self, jTorque: np.array):
         pybullet.setJointMotorControlArray(
@@ -222,3 +289,11 @@ class KukaSimulator():
             controlMode=pybullet.TORQUE_CONTROL,
             forces=jTorque.tolist()
         )
+
+    def move2InitialPoseImpendance(self):
+        targetPos = [-0.1, 0.0, 0.8, 0.0, -np.pi, 0.0]
+        targetVel = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        targetForce = 0.0
+        wrench = self.hybridControlWrench(targetPos, targetVel, targetForce)
+        jTorque = self.wrench2JointTorque(wrench)
+        self.exertJointTorques(jTorque)
