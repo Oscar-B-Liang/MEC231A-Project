@@ -1,12 +1,13 @@
 import numpy as np
 import pybullet
 import pybullet_data
+from pybullet_utils import urdfEditor as ued
 from scipy.spatial.transform import Rotation as R
 
 
 class KukaSimulator():
 
-    def __init__(self, p_gain_lin=3000, p_gain_rot=880, d_gain_lin=300, d_gain_rot=100, force_gain=1.0):
+    def __init__(self, p_gain_lin=3000, p_gain_rot=880, d_gain_lin=30, d_gain_rot=10, force_gain=0.0):
 
         # Connect to physics server.
         pybullet.connect(pybullet.GUI)
@@ -14,16 +15,31 @@ class KukaSimulator():
         pybullet.setAdditionalSearchPath(pybullet_data.getDataPath())
         # Load the ground.
         pybullet.loadURDF("plane.urdf", basePosition=[0, 0, 0.0], useFixedBase=True)
-        # Load the table.
+
+        # Load the table (default coefficient of friction 1.0).
         self.tableId = pybullet.loadURDF("table/table.urdf", basePosition=[0, 0, 0.0], useFixedBase=True)
+
         # Load the KUKA arm.
         self.kukaId = pybullet.loadURDF("kuka_iiwa/model.urdf", basePosition=[0.4, 0, 0.6], useFixedBase=True)
-        # pybullet.resetBasePositionAndOrientation(self.kukaId, [0, 0, 0.3], [0, 0, 0, 1])
         # Index Utilities.
         self.kukaEndEffectorIndex = 6
         self.numJoints = pybullet.getNumJoints(self.kukaId)
 
-        # Simulation steps start.
+        # Place a small needle on top of the kuka robot.
+        self.needleId = pybullet.loadURDF("/home/liangby/MEC231A-Project/needle.urdf", basePosition=[0.0, 0.0, 1.4])
+        print(pybullet)
+        pybullet.createConstraint(
+            parentBodyUniqueId=self.kukaId,
+            parentLinkIndex=self.kukaEndEffectorIndex,
+            childBodyUniqueId=self.needleId,
+            childLinkIndex=-1,
+            jointType=pybullet.JOINT_FIXED,
+            jointAxis=[0.0, 0.0, 0.0],
+            parentFramePosition=[0.0, 0.0, 0.06],
+            childFramePosition=[0.0, 0.0, 0.0]
+        )
+
+        # Start realtime simulation.
         pybullet.setRealTimeSimulation(1)
 
         # Lower limits for null space.
@@ -57,7 +73,7 @@ class KukaSimulator():
         """Move the Kuka robot to its initial position to start the experiment.
         Simply position control, must be completed at the beginning.
         """
-        threshold = 1.0e-3
+        threshold = 1.0e-4
         currjPos, _ = self.getJointPosVel()
         jPos = pybullet.calculateInverseKinematics(
             bodyUniqueId=self.kukaId,
@@ -93,7 +109,7 @@ class KukaSimulator():
         position, orientation = results[0], results[1]
         r = R.from_quat(orientation)
         rotvec = r.as_rotvec()
-        return np.array(position + rotvec)
+        return np.array([*position, *rotvec])
 
     def getEndEffectorVel(self) -> np.array:
         """Get the linear and angular velocity of robot end-effector
@@ -101,9 +117,9 @@ class KukaSimulator():
         Returns:
             np.array: (6,) shape, first 3 is linear velocity, last 3 is angular velocity.
         """
-        results = pybullet.getLinkState(self.kukaId, self.kukaEndEffectorIndex)[6]
+        results = pybullet.getLinkState(self.kukaId, self.kukaEndEffectorIndex, computeLinkVelocity=1)
         linear, angular = results[6], results[7]
-        return np.array(linear + angular)
+        return np.array([*linear, *angular])
 
     def getJointPosVel(self) -> np.array:
         """Get the joint position of the 7 joints in the kuka robot arm.
@@ -134,13 +150,13 @@ class KukaSimulator():
         jPos, jVel = self.getJointPosVel()
         linearJ, angularJ = pybullet.calculateJacobian(
             bodyUniqueId=self.kukaId,
-            linkindex=self.kukaEndEffectorIndex,
-            localPosition=np.zeros(3),
-            objPositions=jPos,
-            objVelocities=jVel,
-            objAccelerations=np.zeros(6)
+            linkIndex=self.kukaEndEffectorIndex,
+            localPosition=[0.0 for i in range(3)],
+            objPositions=jPos.tolist(),
+            objVelocities=jVel.tolist(),
+            objAccelerations=[0.0 for i in range(7)]
         )
-        return np.array(linearJ + angularJ)
+        return np.array([*linearJ, *angularJ])
 
     def getMassMatrix(self) -> np.array:
         """Get the mass matrix to satisfy t(q)=M(q)dotdotq
@@ -148,7 +164,8 @@ class KukaSimulator():
         Returns:
             np.array: shape (7, 7), the configuration mass matrix
         """
-        massMatrix = pybullet.calculateMassMatrix(self.kukaId, self.kukaEndEffectorIndex)
+        jPos, _ = self.getJointPosVel()
+        massMatrix = pybullet.calculateMassMatrix(self.kukaId, jPos.tolist())
         return np.array(massMatrix)
 
     def getOperationalMass(self) -> np.array:
@@ -187,20 +204,21 @@ class KukaSimulator():
             targetForce (float): the target z-axis force (global frame) to track.
 
         Returns:
-            np.array: shape (3,), the desired end-effector force
+            np.array: shape (6,), the desired end-effector force/torque
         """
         op_mass = self.getOperationalMass()
         pos_diff = targetPos - self.getEndEffectorPose()
         vel_diff = targetVel - self.getEndEffectorVel()
         force_diff = targetForce - self.getForceTorqueReading()
-        position_gain = np.diag(self.p_gain_lin, self.p_gain_lin, self.p_gain_lin, self.p_gain_rot, self.p_gain_rot, self.p_gain_rot)
-        damping_gain = np.diag(self.d_gain_lin, self.d_gain_lin, self.d_gain_lin, self.d_gain_rot, self.d_gain_rot, self.d_gain_rot)
+        position_gain = np.diag([self.p_gain_lin, self.p_gain_lin, self.p_gain_lin, self.p_gain_rot, self.p_gain_rot, self.p_gain_rot])
+        damping_gain = np.diag([self.d_gain_lin, self.d_gain_lin, self.d_gain_lin, self.d_gain_rot, self.d_gain_rot, self.d_gain_rot])
         force_gain = np.array([self.force_gain for i in range(6)])
         return op_mass @ (position_gain @ pos_diff + damping_gain @ vel_diff) + force_gain * force_diff
 
-
-kuka = KukaSimulator()
-kuka.move2InitialPose()
-print("Initialization completed.")
-while True:
-    pass
+    def exertJointTorques(self, jTorque: np.array):
+        pybullet.setJointMotorControlArray(
+            bodyIndex=self.kukaId,
+            jointIndices=range(self.numJoints),
+            controlMode=pybullet.TORQUE_CONTROL,
+            forces=jTorque.tolist()
+        )
