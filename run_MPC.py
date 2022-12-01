@@ -18,6 +18,6 @@ def run_MPC(x0):
 
 if __name__ == "__main__":
     set_MPC_param(horizon=20, time_step=20)
-    u_opt = run_MPC(np.array([0, 0, 0, 0, 0]))
+    u_opt = run_MPC(x0=np.array([0, 0, 0, 0, 0]))
     
     
