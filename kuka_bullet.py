@@ -1,7 +1,26 @@
 import numpy as np
 import os
 import pybullet as p
+from scipy.spatial.transform import Rotation as R
 import time
+
+
+def compute_rotation_error(quat1: np.ndarray, quat2: np.ndarray) -> np.ndarray:
+    """compute the difference between two quaternions in rotation-axis manner.
+
+    Args:
+        quat1 (np.ndarray): the first quaternion.
+        quat2 (np.ndarray): the second quaternion.
+
+    Returns:
+        np.ndarray: the rotation difference.
+    """
+    rot1 = R.from_quat(quat1)
+    rot2 = R.from_quat(quat2)
+    rc1, rc2, rc3 = rot2[0:3, 0], rot2[0:3, 1], rot2[0:3, 2]
+    rd1, rd2, rd3 = rot1[0:3, 0], rot1[0:3, 1], rot1[0:3, 2]
+    rot_error = (np.cross(rc1, rd1) + np.cross(rc2, rd2) + np.cross(rc3, rd3)) / 2.0
+    return rot_error.reshape(-1, 1)
 
 
 class KukaBullet():
@@ -129,6 +148,18 @@ class KukaBullet():
         self.dx_linear = np.asarray(eef_states[-2]).reshape(-1, 1)
         self.dx_angular = np.asarray(eef_states[-1]).reshape(-1, 1)
 
+    def observe_external_torque(self, w=1):
+        M = self.compute_inertial(self.q.reshape(-1,))
+        g, c = self.compute_dynamics_drift(self.q.reshape(-1,), self.dq.reshape(-1,))
+
+        beta = g + c - (M - self.M_old) / self.timeStep @ self.dq
+        p_t = M @ self.dq
+        self.observer_integral += (np.asarray(self.tau) - beta + self.r) * self.timeStep
+        self.r = self.Ko @ (p_t - self.observer_integral - self.p_0)
+
+        self.tau_external = -self.r
+        self.M_old = M.copy()
+
     def apply_torque(self, tau):
         """Apply torque to the robot joints.
 
@@ -151,7 +182,220 @@ class KukaBullet():
             if sleep:
                 time.sleep(self.time_step)
             self.update_robot_state()
+            self.observe_external_torque()
 
     #######################################
     ##  Impedance Controller
     #######################################
+
+    def compute_inertial(self, q: list) -> np.ndarray:
+        """Compute the intertial matrix M(q) given the configuration pose.
+
+        Args:
+            q (list of float): the position of each joint.
+
+        Returns:
+            np.ndarray: 7x7 mass matrix M(q)
+        """
+        assert len(q) == self.dof, f'The robot has DoF {self.dof}, but got joint positions with length {len(q)}'
+        q = q.reshape(-1,).tolist() if isinstance(q, np.ndarray) else q
+        M = p.calculateMassMatrix(bodyUniqueId=self.kukaUid, objPositions=q, physicsClientId=self.__physics_client_id)
+        return np.asarray(M)
+
+    def compute_jacobian(self, q: list) -> np.ndarray:
+        """Compute the Jacobian J(q) given the configuration space pose.
+
+        Args:
+            q (list): the position of each joint
+
+        Returns:
+            np.ndarray: 6x7 Jacobian J(q)
+        """
+        assert len(q) == self.dof, f'The robot has DoF {self.dof}, but got joint positions with length {len(q)}'
+        q = q.reshape(-1,).tolist() if isinstance(q, np.ndarray) else q
+        dq = [0] * len(q)
+        ddq = [0] * len(q)
+        J = p.calculateJacobian(
+            bodyUniqueId=self.kukaUid,
+            linkIndex=self.graspTargetLink,
+            localPosition=[0, 0, 0],
+            objPositions=q,
+            objVelocities=dq,
+            objAccelerations=ddq,
+            physicsClientId=self.__physics_client_id
+        )
+        return np.asarray(J)
+
+    def compute_dynamics_drift(self, q: list, dq: list) -> tuple(np.ndarray, np.ndarray):
+        """Compute the dynamical drift in gravity in criolis.
+
+        Args:
+            q (list of floats): current joint position.
+            dq (list of floats): current joint velocities.
+
+        Returns:
+            two np.ndarray: dynamics drift by gravity and criolis respectively.
+        """
+        assert len(q) == self.dof, f'The robot has DoF {self.dof}, but got {len(q)} joint positions.'
+        assert len(dq) == self.dof, f'The robot has DoF {self.dof}, but got {len(dq)} joint velocities.'
+        q = q.tolist() if isinstance(q, np.ndarray) else q
+        dq = dq.tolist() if isinstance(dq, np.ndarray) else dq
+        dq_zero = [0] * len(q)
+        ddq = [0] * len(q)
+        gravity = np.asarray(p.calculateInverseDynamics(bodyUniqueId=self.kukaUid, objPositions=q, objVelocities=dq_zero, objAccelerations=ddq, physicsClientId=self.__physics_client_id))
+        coriolis = np.asarray(p.calculateInverseDynamics(bodyUniqueId=self.kukaUid, objPositions=q, objVelocities=dq, objAccelerations=ddq, physicsClientId=self.__physics_client_id)) - gravity
+        return gravity.reshape(-1, 1), coriolis.reshape(-1, 1)
+
+    def compute_task_inertial(self, M: np.ndarray, J: np.ndarray, M_inv: np.ndarray = None) -> np.ndarray:
+        """Get the inertial matrix in the task space.
+
+        Args:
+            M (np.ndarray): the inertial matrix in joint space
+            J (np.ndarray): the 6x7 Jacobian
+            M_inv (np.ndarray, optional): the inverse of the joint space mass matrix
+                                          If None, it will be computed automatically. Defaults to None.
+
+        Returns:
+            np.ndarray: the task space inertial matrix.
+        """
+        M_inv = np.linalg.inv(M) if M_inv is None else M_inv
+        tmp = J @ M_inv @ J.T
+        M_task = np.linalg.pinv(tmp)
+        return M_task
+
+    def compute_jacobian_inverse(self, M: np.ndarray, J: np.ndarray) -> np.ndarray:
+        """Compute the dynamical consistent Jacobian inverse.
+
+        Args:
+            M (np.ndarray): the inertial matrix in the configuration space.
+            J (np.ndarray): tha 6x7 Jacobian matrix.
+
+        Returns:
+            np.ndarray: the dynamical consistent Jacobian inverse.
+        """
+        M_inv = np.linalg.inv(M)
+        M_task = self.compute_task_inertial(M, J, M_inv=M_inv)
+        J_inv = M_inv @ J.T @ M_task
+        return J_inv
+
+    def compute_ik(self, pos: list, quat: list, restPoses: list = None) -> np.ndarray:
+        """compute inverse kinematcis with target position and quaternion.
+
+        Args:
+            pos (list): target position
+            quat (list): target quaternion
+            restPoses (list, optional): _description_. Defaults to None.
+
+        Returns:
+            np.ndarray: the 7x joint positions.
+        """
+        pos = pos.tolist() if isinstance(pos, np.ndarray) else pos
+        quat = quat.tolist() if isinstance(quat, np.ndarray) else quat
+        restPoses = self.armJointPositions if restPoses is None else restPoses.reshape(-1,).tolist()
+        q = p.calculateInverseKinematics(
+            bodyUniqueId=self.kukaUid,
+            endEffectorLinkIndex=self.graspTargetLink,
+            targetPosition=pos,
+            targetOrientation=quat,
+            lowerLimits=self.lowerLimits,
+            upperLimits=self.upperLimits,
+            jointRanges=self.jointRanges,
+            restPoses=restPoses
+        )
+        return np.asarray(q).reshape(-1, 1)
+
+    def compute_torque(
+        self,
+        pos_desire: list,
+        quat_desire: list,
+        vel_desire: list = None,
+        use_ext_tau: bool = True,
+        nullspace_type: str = "contact",
+        restPoses: list = None
+    ):
+        """Compute the torque to apply to each joint given the desired position, quaternion and velocity.
+
+        Args:
+            pos_desire (list): desired position (xyz)
+            quat_desire (list): desired quaternion (wxyz)
+            vel_desire (list, optional): desired velocity (6x, both traslation and rotational). Defaults to None.
+            use_ext_tau (bool, optional): if external torque is considered int he planning. Defaults to True.
+            nullspace_type (str, optional): _description_. Defaults to "contact".
+            restPoses (list, optional): _description_. Defaults to None.
+
+        Raises:
+            ValueError: _description_
+
+        Returns:
+            _type_: _description_
+        """
+        pos_desire = np.asarray(pos_desire)
+        quat_desire = np.asarray(quat_desire)
+        vel_desire = np.zeros((6, 1)) if vel_desire is None else np.asarray(vel_desire).reshape(-1, 1)
+
+        # Discrepancy in position.
+        x_err_pos = self.x_pos - pos_desire.reshape(-1, 1)
+        x_err_rot = compute_rotation_error(self.x_quat, quat_desire)
+        x_err = np.vstack((x_err_pos, x_err_rot))
+
+        # Discrepancy in velocity.
+        dx = np.vstack((self.dx_linear, self.dx_angular))
+        dx_err = dx - vel_desire
+
+        # Task space controller.
+        M = self.compute_inertial(self.q.reshape(-1,))
+        J = self.compute_jacobian(self.q.reshape(-1,))
+        M_task = self.compute_task_inertial(M, J)
+        tau_task = J.T @ M_task @ (- self.Kp @ x_err - self.Kd @ dx_err)
+
+        # Joint nullspace controller.
+        q_desire = self.compute_ik(pos=pos_desire, quat=quat_desire, restPoses=restPoses)
+        q_err = self.q - q_desire
+        tau_joint = - self.Kqp @ q_err - self.Kqd @ self.dq
+        J_dyn_inv = self.compute_jacobian_inverse(M, J)
+
+        # Compute nullspace matrices.
+        if nullspace_type == "linear":
+            J_linear = J[0:3]
+            J_inv_linear = self.compute_jacobian_inverse(M, J_linear)
+            N = np.eye(self.dof) - J_inv_linear @ J_linear
+        elif nullspace_type == 'full':
+            N = np.eye(self.dof) - J_dyn_inv @ J
+        elif nullspace_type == 'contact':
+            N = np.eye(self.dof) - J_dyn_inv @ J
+            M_inv = np.linalg.inv(M)
+            inv = - M_inv @ (N.T @ self.tau_external) @ np.linalg.pinv(self.tau_external.T @ N @ M_inv @ N.T @ self.tau_external)
+            N = N @ (np.eye(self.dof) - inv @ self.r.T @ N)
+        else:
+            raise ValueError(f'Nullspace type {nullspace_type} is not supported')
+
+        # Compute nullspace torque.
+        if use_ext_tau:
+            tau_joint = N.T @ tau_joint + N.T @ self.tau_external
+        else:
+            tau_joint = N.T @ tau_joint
+
+        g, c = self.compute_drift(self.q.reshape(-1,), self.dq.reshape(-1,))
+        tau = g + c + tau_task + tau_joint
+        return tau
+
+    def set_gains(self, Kp: float = None, Kd: float = None, Kqp: float = None, Kqd: float = None, Ko: float = None):
+        """Set the controller parameters.
+
+        Args:
+            Kp (float, optional): task space position gain. Defaults to None.
+            Kd (float, optional): task space damping. Defaults to None.
+            Kqp (float, optional): configuration space position gain. Defaults to None.
+            Kqd (float, optional): configuration space damping. Defaults to None.
+            Ko (float, optional): _description_. Defaults to None.
+        """
+        if Kp is not None:
+            self.Kp = np.diag(Kp)
+        if Kd is not None:
+            self.Kd = np.diag(Kd)
+        if Kqp is not None:
+            self.Kqp = np.diag(Kqp)
+        if Kqd is not None:
+            self.Kqd = np.diag(Kqd)
+        if Ko is not None:
+            self.Ko = np.diag(Ko)
