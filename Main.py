@@ -11,3 +11,4 @@ if __name__ == "__main__":
     Para.set_initial_state(x0)
     Para.update_system_para()
     [model, feasibility, x_opt, u_opt, j_opt] = MPC.solve_mpc()
+    # print('xOpt =', x_opt)

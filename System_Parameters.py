@@ -74,17 +74,17 @@ def update_system_para():
     _tmp = 0.5 * Ts ** 2
     B_matrix = np.array([[_tmp, 0, 0], [0, _tmp, 0], [Ts, 0, 0], [0, Ts, 0], [0, 0, 1]])
 
-    Q_matrix = np.diag(1, 1)
-    R_matrix = np.diag(1, 1, 1)
+    Q_matrix = np.diag([1, 1])
+    R_matrix = np.diag([1, 1, 1])
 
     acc_limit = np.array([[-10, 10], [-10, 10]])
     vel_limit = np.array([[-10, 10], [-10, 10]])
     pos_limit = np.array([[-10, 10], [-10, 10]])
-    fz_limit = np.array([-10, 10])
+    fz_limit = np.array([[-10, 10]])
 
     e_max = 1
-    pos_desired = np.zeros((2, horizon))
-    depth_desired = np.zeros(horizon)
+    pos_desired = np.zeros((2, horizon+1))
+    depth_desired = np.zeros(horizon+1)
 
 
 def get_system_dynamics():
