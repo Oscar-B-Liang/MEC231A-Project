@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import pybullet
 import pybullet_data
 from pybullet_utils import urdfEditor as ued
