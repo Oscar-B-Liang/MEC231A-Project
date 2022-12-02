@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import pybullet as p
+import pybullet_data
 from scipy.spatial.transform import Rotation as R
 import time
 
@@ -15,8 +16,8 @@ def compute_rotation_error(quat1: np.ndarray, quat2: np.ndarray) -> np.ndarray:
     Returns:
         np.ndarray: the rotation difference.
     """
-    rot1 = R.from_quat(quat1)
-    rot2 = R.from_quat(quat2)
+    rot1 = R.from_quat(quat1.reshape(-1,)).as_matrix()
+    rot2 = R.from_quat(quat2.reshape(-1,)).as_matrix()
     rc1, rc2, rc3 = rot2[0:3, 0], rot2[0:3, 1], rot2[0:3, 2]
     rd1, rd2, rd3 = rot1[0:3, 0], rot1[0:3, 1], rot1[0:3, 2]
     rot_error = (np.cross(rc1, rd1) + np.cross(rc2, rd2) + np.cross(rc3, rd3)) / 2.0
@@ -47,19 +48,24 @@ class KukaBullet():
         """Create the KUKA robot.
         """
 
+        # Load the table (default coefficient of friction 1.0).
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())
+        self.tableId = p.loadURDF("table/table.urdf", basePosition=[0.4, 0, 0.0], useFixedBase=True)
+        p.changeDynamics(bodyUniqueId=self.tableId, linkIndex=-1, lateralFriction=0.0, spinningFriction=0.0, rollingFriction=0.0)
+
         # Load the robot
         flags = p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES | p.URDF_USE_INERTIA_FROM_FILE | p.URDF_USE_SELF_COLLISION
-        self.kukaUid = p.loadURDF(self.__robot_urdf, basePosition=[0, 0, 0], baseOrientation=[0, 0, 0, 1], flags=flags, phsyicsClientId=self.__physics_client_id)
+        self.kukaUid = p.loadURDF(self.__robot_urdf, basePosition=[0, 0, 0.6], baseOrientation=[0, 0, 0, 1], flags=flags, physicsClientId=self.__physics_client_id)
 
         self.armJointPositions = [0.0, 0.0, 0.0, -np.pi / 2, 0.0, np.pi / 2, 0.0]
         self.gripperOpenPositions = [0.0, 0.0]
         self.gripperClosePositions = [0.025, 0.025]
 
-        self.numJoints = p.getNumJoints(self.kukaUid, physicsClientId=self._physics_client_id)
+        self.numJoints = p.getNumJoints(self.kukaUid, physicsClientId=self.__physics_client_id)
         self.armJointsInfo = {}
         self.gripperJointsInfo = {}
         for i in range(self.numJoints):
-            info = p.getJointInfo(self.kukaUid, i, physicsClientId=self._physics_client_id)
+            info = p.getJointInfo(self.kukaUid, i, physicsClientId=self.__physics_client_id)
             if info[2] == p.JOINT_REVOLUTE:
                 self.armJointsInfo[i] = info[1]
             elif info[2] == p.JOINT_PRISMATIC:
@@ -70,7 +76,7 @@ class KukaBullet():
         self.armJoints = list(self.armJointsInfo.keys())
         self.gripperJoints = list(self.gripperJointsInfo.keys())
 
-        self.graspTargetPos = [0.5325, 0.0, 0.1927]
+        self.graspTargetPos = [0.5325, 0.0, 0.6]
         self.graspTargetQuat = [1, 0, 0, 0]
 
         self.dof = 7
@@ -80,7 +86,7 @@ class KukaBullet():
 
         # Enable the force-torque sensor for arm joint
         for jointIndex in self.armJoints:
-            p.enableJointForceTorqueSensor(self.kukaUid, jointIndex=jointIndex, enableSensor=True, physicsClientId=self._physics_client_id)
+            p.enableJointForceTorqueSensor(self.kukaUid, jointIndex=jointIndex, enableSensor=True, physicsClientId=self.__physics_client_id)
 
         self.debug_gui()
 
@@ -90,12 +96,13 @@ class KukaBullet():
 
         # Reset joint pose and enable torque control/sensor
         for jointIndex, target in zip(self.armJoints, self.armJointPositions):
-            p.resetJointState(self.kukaUid, jointIndex, target, physicsClientId=self._physics_client_id)
-            p.setJointMotorControl2(self.kukaUid, jointIndex, p.VELOCITY_CONTROL, force=self.jointFrictionForce, physicsClientId=self._physics_client_id)
+            p.resetJointState(self.kukaUid, jointIndex, target, physicsClientId=self.__physics_client_id)
+            p.setJointMotorControl2(self.kukaUid, jointIndex, p.VELOCITY_CONTROL, force=self.jointFrictionForce, physicsClientId=self.__physics_client_id)
 
         # Reset the controller
         self.q = np.asarray(self.armJointPositions).reshape(-1, 1)
         self.dq = np.zeros_like(self.q)
+        self.fz = 0.0
         self.tau = np.zeros_like(self.q)
 
         self.x_pos = np.asarray(self.graspTargetPos).reshape(-1, 1)
@@ -139,6 +146,7 @@ class KukaBullet():
         q, dq, reaction_force, applied_force = list(zip(*states))
         self.q = np.asarray(q).reshape(-1, 1)
         self.dq = np.asarray(dq).reshape(-1, 1)
+        self.fz = reaction_force[6][2]
         self.tau = np.asarray(applied_force).reshape(-1, 1)
 
         # Update task space states.
@@ -152,9 +160,9 @@ class KukaBullet():
         M = self.compute_inertial(self.q.reshape(-1,))
         g, c = self.compute_dynamics_drift(self.q.reshape(-1,), self.dq.reshape(-1,))
 
-        beta = g + c - (M - self.M_old) / self.timeStep @ self.dq
+        beta = g + c - (M - self.M_old) / self.time_step @ self.dq
         p_t = M @ self.dq
-        self.observer_integral += (np.asarray(self.tau) - beta + self.r) * self.timeStep
+        self.observer_integral += (np.asarray(self.tau) - beta + self.r) * self.time_step
         self.r = self.Ko @ (p_t - self.observer_integral - self.p_0)
 
         self.tau_external = -self.r
@@ -168,7 +176,7 @@ class KukaBullet():
         """
         assert len(tau) == self.dof, f'The robot as DoF {self.dof}, but get {len(tau)} torques'
         tau = tau.reshape(-1,).tolist() if isinstance(tau, np.ndarray) else tau
-        p.setMotorControlArray(bodyUniqueId=self.kukaUid, jointIndices=self.armJoints, controlMode=p.TORQUE_CONTROL, forces=tau, physicsClientId=self.__physics_client_id)
+        p.setJointMotorControlArray(bodyUniqueId=self.kukaUid, jointIndices=self.armJoints, controlMode=p.TORQUE_CONTROL, forces=tau, physicsClientId=self.__physics_client_id)
 
     def step_robot(self, steps: int = 1, sleep: bool = True):
         """Run physics engines in the simulator.
@@ -224,9 +232,9 @@ class KukaBullet():
             objAccelerations=ddq,
             physicsClientId=self.__physics_client_id
         )
-        return np.asarray(J)
+        return np.vstack(J)
 
-    def compute_dynamics_drift(self, q: list, dq: list) -> tuple(np.ndarray, np.ndarray):
+    def compute_dynamics_drift(self, q: list, dq: list) -> np.ndarray:
         """Compute the dynamical drift in gravity in criolis.
 
         Args:
@@ -309,6 +317,7 @@ class KukaBullet():
         pos_desire: list,
         quat_desire: list,
         vel_desire: list = None,
+        fz_desired: float = None,
         use_ext_tau: bool = True,
         nullspace_type: str = "contact",
         restPoses: list = None
@@ -319,6 +328,7 @@ class KukaBullet():
             pos_desire (list): desired position (xyz)
             quat_desire (list): desired quaternion (wxyz)
             vel_desire (list, optional): desired velocity (6x, both traslation and rotational). Defaults to None.
+            fz_desired (float, optional): desired z-axis force.
             use_ext_tau (bool, optional): if external torque is considered int he planning. Defaults to True.
             nullspace_type (str, optional): _description_. Defaults to "contact".
             restPoses (list, optional): _description_. Defaults to None.
@@ -333,7 +343,7 @@ class KukaBullet():
         quat_desire = np.asarray(quat_desire)
         vel_desire = np.zeros((6, 1)) if vel_desire is None else np.asarray(vel_desire).reshape(-1, 1)
 
-        # Discrepancy in position.
+        # Discrepancy in pose.
         x_err_pos = self.x_pos - pos_desire.reshape(-1, 1)
         x_err_rot = compute_rotation_error(self.x_quat, quat_desire)
         x_err = np.vstack((x_err_pos, x_err_rot))
@@ -342,11 +352,12 @@ class KukaBullet():
         dx = np.vstack((self.dx_linear, self.dx_angular))
         dx_err = dx - vel_desire
 
-        # Task space controller.
+        # Task space controller, simply give open loop desired force.
         M = self.compute_inertial(self.q.reshape(-1,))
         J = self.compute_jacobian(self.q.reshape(-1,))
         M_task = self.compute_task_inertial(M, J)
-        tau_task = J.T @ M_task @ (- self.Kp @ x_err - self.Kd @ dx_err)
+        fz_err = np.array([[0.0], [0.0], [fz_desired], [0.0], [0.0], [0.0]])
+        tau_task = J.T @ (M_task @ (-self.Kp @ x_err - self.Kd @ dx_err) + fz_err)
 
         # Joint nullspace controller.
         q_desire = self.compute_ik(pos=pos_desire, quat=quat_desire, restPoses=restPoses)
@@ -375,7 +386,7 @@ class KukaBullet():
         else:
             tau_joint = N.T @ tau_joint
 
-        g, c = self.compute_drift(self.q.reshape(-1,), self.dq.reshape(-1,))
+        g, c = self.compute_dynamics_drift(self.q.reshape(-1,), self.dq.reshape(-1,))
         tau = g + c + tau_task + tau_joint
         return tau
 

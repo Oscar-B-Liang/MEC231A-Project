@@ -1,5 +1,7 @@
 import pybullet as p
-from pybullet_kuka import Kuka
+import pybullet_data
+# from pybullet_kuka import Kuka
+from kuka_bullet import KukaBullet
 import os
 from matplotlib import pyplot as plt
 import numpy as np
@@ -10,15 +12,15 @@ p.resetSimulation(physicsClientId=physicsClientId)
 p.setGravity(0, 0, -10)
 root_path = os.path.join(os.path.abspath(os.getcwd()), 'gyms')
 
-robot = Kuka(physicsClientId=physicsClientId, root_path=root_path, fix_gripper=True)
+robot = KukaBullet(physicsClientId=physicsClientId, root_path=root_path)
 p.stepSimulation(physicsClientId=physicsClientId)
 
 # A floating ball to collide
-ball_start = [0.07, 0.3, 0.7]
-colcid = p.createCollisionShape(p.GEOM_SPHERE, radius=0.05, physicsClientId=physicsClientId)
-sphereid = p.createMultiBody(baseMass=1, baseCollisionShapeIndex=colcid,
-                             basePosition=ball_start, physicsClientId=physicsClientId)
-cid = p.createConstraint(sphereid, -1, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], ball_start, physicsClientId=physicsClientId)
+# ball_start = [0.07, 0.3, 0.7]
+# colcid = p.createCollisionShape(p.GEOM_SPHERE, radius=0.05, physicsClientId=physicsClientId)
+# sphereid = p.createMultiBody(baseMass=1, baseCollisionShapeIndex=colcid,
+#                              basePosition=ball_start, physicsClientId=physicsClientId)
+# cid = p.createConstraint(sphereid, -1, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], ball_start, physicsClientId=physicsClientId)
 
 rad = 0.05
 o = np.asarray(robot.graspTargetPos) - np.array([rad, 0, 0])
@@ -29,7 +31,7 @@ fig = plt.figure(figsize=(15, 10))
 axs = [plt.subplot(3, 1, i + 1) for i in range(3)]
 
 fig2 = plt.figure(figsize=(15, 10))
-axs2 = [plt.subplot(7, 1, i + 1) for i in range(7)]
+axs2 = [plt.subplot(8, 1, i + 1) for i in range(8)]
 
 def run_controller(use_ext_tau, nullspace_type, legend):
     robot.reset_robot()
@@ -46,23 +48,21 @@ def run_controller(use_ext_tau, nullspace_type, legend):
     eef_pos = np.zeros((240 * 3 * 3, 3))
     ref = np.zeros((240 * 3 * 3, 3))
     external_torques = np.zeros((240 * 3 * 3, 7))
+    ft_readings = np.zeros((240 * 3 * 3))
 
     for step in range(240 * 3 * 3):
         robot.step_robot(steps=1, sleep=False)
 
-        theta = 2 * np.pi * step / (240 * 3) + np.pi / 2
-        target = rad * np.asarray([np.sin(theta), np.cos(theta), 0]) + o
+        x = step / (240 * 3)
+        target = rad * np.asarray([x, 0.0, 0.001]) + o
 
-        tau = robot.compute_torque(target, quat_desire, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+        tau = robot.compute_torque(target, quat_desire, fz_desired=4.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
         robot.apply_torque(tau)
-
-        # ball_y = (ball_start[1] / 2) - np.sin(2 * np.pi * step / (240 * 3) - np.pi / 2) * ball_start[1] / 2
-        ball_y = np.clip(ball_start[1] - step / (240 * 3), 0, 1)
-        p.changeConstraint(cid, [ball_start[0], ball_y, ball_start[2]], maxForce=200)
 
         eef_pos[step] = robot.x_pos.reshape(-1,)
         ref[step] = target
         external_torques[step] = robot.tau_external.reshape(-1,)
+        ft_readings[step] = robot.fz
 
     # Plot
     err = abs(eef_pos - ref)
@@ -71,6 +71,9 @@ def run_controller(use_ext_tau, nullspace_type, legend):
 
     for j in range(7):
         axs2[j].plot(external_torques[:, j], label=legend)
+
+    axs2[7].plot(ft_readings, label=legend)
+    axs2[7].set_ylim(-5.0, 5.0)
 
 run_controller(use_ext_tau=False, nullspace_type='full', legend='No obs w/ Full Nullspace')
 run_controller(use_ext_tau=False, nullspace_type='linear', legend='No obs w/ Linear Nullspace')

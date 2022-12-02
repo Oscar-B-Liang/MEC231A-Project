@@ -83,8 +83,8 @@ def update_system_para():
     fz_limit = np.array([[-10, 10]])
 
     e_max = 1
-    pos_desired = np.zeros((2, horizon+1))
-    depth_desired = np.zeros(horizon+1)
+    pos_desired = np.zeros((2, horizon + 1))
+    depth_desired = np.zeros(horizon + 1)
 
 
 def get_system_dynamics():
