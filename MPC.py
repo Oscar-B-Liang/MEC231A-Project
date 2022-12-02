@@ -8,8 +8,10 @@ def solve_mpc():
     a_mat, b_mat = Para.get_system_dynamics()
     q_mat, r_mat = Para.get_cost_weight()
     x0 = Para.get_initial_state()
+    xf = Para.get_final_state()
     acc, vel, pos, fz = Para.get_system_limit()
-    pos_d, depth_d, e_max = Para.get_pos_desired()
+    # pos_d, depth_d, e_max = Para.get_pos_desired()
+    pos_k, pos_b, depth_a, depth_b, depth_c, e_max = Para.get_pos_desired()
     input_lim = np.concatenate((acc, fz), axis=0)
     state_lim = np.concatenate((pos, vel, fz), axis=0)
 
@@ -44,10 +46,13 @@ def solve_mpc():
         cost_depth = 0.0
         cost_u = 0.0
         for t in model.nIDX:
-            pos_err = ((model.x[0, t] - pos_d[0, t]) ** 2 + (model.x[1, t] - pos_d[1, t]) ** 2) ** 0.5
+            # pos_err = (model.x[0, t] - pos_d[0, t]) ** 2 + (model.x[1, t] - pos_d[1, t]) ** 2
+            pos_err = (pos_k * model.x[0, t] - model.x[1, t] + pos_b) / (1 + pos_k ** 2) ** 0.5
             cost_pos += pos_err * model.Q[0, 0] * pos_err
         for t in model.nIDX:
-            depth_err = Para.calculate_depth(model.x[2, t], model.x[3, t], model.x[4, t]) - depth_d[t]
+            # depth_err = Para.calculate_depth(model.x[2, t], model.x[3, t], model.x[4, t]) - depth_d[t]
+            depth_err = Para.calculate_depth(model.x[2, t], model.x[3, t], model.x[4, t]) - \
+                        (depth_a * model.x[0, t] + depth_b * model.x[1, t] + depth_c)
             cost_depth += depth_err * model.Q[1, 1] * depth_err
         for t in _model.tIDX:
             for i in _model.uIDX:
@@ -70,6 +75,12 @@ def solve_mpc():
 
     model.init_constraint = pyo.Constraint(model.xIDX, rule=init_eqa_const_rule)
 
+    # final constraint
+    def final_eqa_const_rule(_model, i):
+        return _model.x[i, n] == xf[i]
+
+    model.final_constraint = pyo.Constraint(model.xIDX, rule=final_eqa_const_rule)
+
     # input constraint
     def input_const_rule1(_model, i, t):
         return _model.u[i, t] <= input_lim[i, 1]
@@ -91,16 +102,17 @@ def solve_mpc():
     model.state_constraint2 = pyo.Constraint(model.xIDX, model.nIDX, rule=state_const_rule2)
 
     # position constraint
-    def pos_const_rule1(_model, i, t):
+    '''def pos_const_rule1(_model, i, t):
         return _model.x[i, t] <= pos_d[i, t] + e_max
 
     def pos_const_rule2(_model, i, t):
         return _model.x[i, t] >= pos_d[i, t] - e_max
 
     model.pos_constraint1 = pyo.Constraint(model.pIDX, model.nIDX, rule=pos_const_rule1)
-    model.pos_constraint2 = pyo.Constraint(model.pIDX, model.nIDX, rule=pos_const_rule2)
+    model.pos_constraint2 = pyo.Constraint(model.pIDX, model.nIDX, rule=pos_const_rule2)'''
 
     solver = pyo.SolverFactory('ipopt')
+    model.pprint()
     results = solver.solve(model)
 
     if str(results.solver.termination_condition) == "optimal":
@@ -108,8 +120,8 @@ def solve_mpc():
     else:
         feasibility = False
 
-    x_opt = np.asarray([[model.x[i, t]() for i in model.xIDX] for t in model.tIDX]).T
-    u_opt = np.asarray([model.u[:, t]() for t in model.tIDX]).T
+    x_opt = np.asarray([[round(model.x[i, t](), 4) for i in model.xIDX] for t in model.nIDX]).T
+    u_opt = np.asarray([[round(model.u[i, t](), 4) for i in model.uIDX] for t in model.tIDX]).T
 
     j_opt = model.cost()
 
