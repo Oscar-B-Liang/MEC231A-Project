@@ -40,6 +40,7 @@ class KukaBullet():
         self.__robot_urdf = os.path.join(root_path, 'robot/model.urdf')
         self.time_step = time_step
         self.jointFrictionForce = 1e-5
+        self.gravity_compensate = 3.1
 
         self.create_robot()
         self.reset_robot()
@@ -146,7 +147,7 @@ class KukaBullet():
         q, dq, reaction_force, applied_force = list(zip(*states))
         self.q = np.asarray(q).reshape(-1, 1)
         self.dq = np.asarray(dq).reshape(-1, 1)
-        self.fz = reaction_force[6][2]
+        self.fz = self.gravity_compensate - reaction_force[6][2]
         self.tau = np.asarray(applied_force).reshape(-1, 1)
 
         # Update task space states.

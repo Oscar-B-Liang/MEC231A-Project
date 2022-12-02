@@ -54,9 +54,14 @@ def run_controller(use_ext_tau, nullspace_type, legend):
         robot.step_robot(steps=1, sleep=False)
 
         x = step / (240 * 3)
-        target = rad * np.asarray([x, 0.0, 0.001]) + o
+        target = rad * np.asarray([x, 0.0, 0.0]) + o
 
-        tau = robot.compute_torque(target, quat_desire, fz_desired=4.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+        if step < 240 * 3:
+            tau = robot.compute_torque(target, quat_desire, fz_desired=0.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+        elif step < 240 * 3 * 2:
+            tau = robot.compute_torque(target, quat_desire, fz_desired=1.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+        else:
+            tau = robot.compute_torque(target, quat_desire, fz_desired=2.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
         robot.apply_torque(tau)
 
         eef_pos[step] = robot.x_pos.reshape(-1,)
@@ -73,15 +78,15 @@ def run_controller(use_ext_tau, nullspace_type, legend):
         axs2[j].plot(external_torques[:, j], label=legend)
 
     axs2[7].plot(ft_readings, label=legend)
-    axs2[7].set_ylim(-5.0, 5.0)
+    axs2[7].set_ylim(-3.0, 3.0)
 
-run_controller(use_ext_tau=False, nullspace_type='full', legend='No obs w/ Full Nullspace')
-run_controller(use_ext_tau=False, nullspace_type='linear', legend='No obs w/ Linear Nullspace')
-run_controller(use_ext_tau=False, nullspace_type='contact', legend='No obs w/ Contact Nullspace')
+# run_controller(use_ext_tau=False, nullspace_type='full', legend='No obs w/ Full Nullspace')
+# run_controller(use_ext_tau=False, nullspace_type='linear', legend='No obs w/ Linear Nullspace')
+# run_controller(use_ext_tau=False, nullspace_type='contact', legend='No obs w/ Contact Nullspace')
 
 run_controller(use_ext_tau=True, nullspace_type='full', legend='Obs w/ Full Nullspace')
-run_controller(use_ext_tau=True, nullspace_type='linear', legend='Obs w/ Linear Nullspace')
-run_controller(use_ext_tau=True, nullspace_type='contact', legend='Obs w/ Contact Nullspace')
+# run_controller(use_ext_tau=True, nullspace_type='linear', legend='Obs w/ Linear Nullspace')
+# run_controller(use_ext_tau=True, nullspace_type='contact', legend='Obs w/ Contact Nullspace')
 
 plt.legend()
 plt.show()
