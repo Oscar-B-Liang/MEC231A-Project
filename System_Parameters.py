@@ -23,6 +23,7 @@ global Q_matrix, R_matrix
 # x0_state : INITIAL STATE, Length 5
 
 global x0_state
+global xf_state
 
 #  ------------------------------------------------
 
@@ -47,6 +48,8 @@ global Ts, horizon
 #  e_max: MAX ACCEPTABLE ERROR BETWEEN poS_desired & pos_exact
 global pos_desired, depth_desired
 global e_max
+global pos_k, pos_b  # y = kx + b
+global depth_a, depth_b, depth_c  # depth = ax + by + c
 
 #  ------------------------------------------------
 
@@ -61,6 +64,11 @@ def set_initial_state(initial_state):
     x0_state = initial_state
 
 
+def set_final_state(final_state):
+    global xf_state
+    xf_state = final_state
+
+
 def set_horizon(h):
     global horizon
     horizon = h
@@ -69,22 +77,28 @@ def set_horizon(h):
 def update_system_para():
     global A_matrix, B_matrix, Q_matrix, R_matrix
     global acc_limit, vel_limit, pos_limit, fz_limit, Ts, horizon, e_max, pos_desired, depth_desired
+    global pos_k, pos_b, depth_a, depth_b, depth_c
 
     A_matrix = np.array([[1, 0, Ts, 0, 0], [0, 1, 0, Ts, 0], [0, 0, 1, 0, 0], [0, 0, 0, 1, 0], [0, 0, 0, 0, 0]])
     _tmp = 0.5 * Ts ** 2
     B_matrix = np.array([[_tmp, 0, 0], [0, _tmp, 0], [Ts, 0, 0], [0, Ts, 0], [0, 0, 1]])
 
-    Q_matrix = np.diag([1, 1])
+    Q_matrix = np.diag([1, 5])
     R_matrix = np.diag([1, 1, 1])
 
     acc_limit = np.array([[-10, 10], [-10, 10]])
     vel_limit = np.array([[-10, 10], [-10, 10]])
-    pos_limit = np.array([[-10, 10], [-10, 10]])
+    pos_limit = np.array([[-100, 100], [-100, 100]])
     fz_limit = np.array([[-10, 10]])
 
     e_max = 1
-    pos_desired = np.zeros((2, horizon+1))
+    # pos_desired = np.zeros((2, horizon+1))
+    pos_k = 1
+    pos_b = 0
     depth_desired = np.zeros(horizon+1)
+    depth_a = 0.1
+    depth_b = 0.1
+    depth_c = 0
 
 
 def get_system_dynamics():
@@ -107,17 +121,28 @@ def get_initial_state():
     return x0_state
 
 
+def get_final_state():
+    global xf_state
+    return xf_state
+
+
 def get_horizon():
     global horizon
     return horizon
 
 
+def get_time_step():
+    global Ts
+    return Ts
+
+
 def get_pos_desired():
-    global pos_desired, depth_desired, e_max
-    return pos_desired, depth_desired, e_max
+    global pos_desired, depth_desired, e_max, pos_k, pos_b, depth_a, depth_b, depth_c
+    # return pos_desired, depth_desired,
+    return pos_k, pos_b, depth_a, depth_b, depth_c, e_max
 
 
 def calculate_depth(v_x, v_y, force):
     k_v = 1.0
     k_f = 1.0
-    return k_v * (v_x ** 2 + v_y ** 2) ** 0.5 + k_f * force
+    return k_v * (v_x ** 2 + v_y ** 2) + k_f * force
