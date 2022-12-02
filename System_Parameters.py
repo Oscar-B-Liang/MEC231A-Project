@@ -92,18 +92,13 @@ def update_system_para():
     fz_limit = np.array([[-10, 10]])
 
     e_max = 1
-<<<<<<< HEAD
-    pos_desired = np.zeros((2, horizon + 1))
-    depth_desired = np.zeros(horizon + 1)
-=======
     # pos_desired = np.zeros((2, horizon+1))
     pos_k = 1
     pos_b = 0
-    depth_desired = np.zeros(horizon+1)
+    depth_desired = np.zeros(horizon + 1)
     depth_a = 0.1
     depth_b = 0.1
     depth_c = 0
->>>>>>> Zedai-Yang
 
 
 def get_system_dynamics():
