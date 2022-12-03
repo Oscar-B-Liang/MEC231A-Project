@@ -45,24 +45,26 @@ def main():
                 x = 0.05 * (240 * 3 * 6 - step) / (240 * 3)
                 target = np.asarray([x, 0.0, 0.0]) + np.asarray(robot.graspTargetPos)
 
-            if step < 240 * 3:
-                tau = robot.compute_torque(target, quat_desire, fz_desired=0.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
-                ft_ref[step] = 0.0
-            elif step < 240 * 3 * 2:
-                tau = robot.compute_torque(target, quat_desire, fz_desired=1.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
-                ft_ref[step] = 1.0
-            elif step < 240 * 3 * 3:
-                tau = robot.compute_torque(target, quat_desire, fz_desired=2.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
-                ft_ref[step] = 2.0
-            elif step < 240 * 3 * 4:
-                tau = robot.compute_torque(target, quat_desire, fz_desired=1.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
-                ft_ref[step] = 1.0
-            elif step < 240 * 3 * 5:
-                tau = robot.compute_torque(target, quat_desire, fz_desired=0.5, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
-                ft_ref[step] = 0.5
-            else:
-                tau = robot.compute_torque(target, quat_desire, fz_desired=0.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
-                ft_ref[step] = 0.0
+            # if step < 240 * 3:
+            #     tau = robot.compute_torque(target, quat_desire, fz_desired=0.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+            #     ft_ref[step] = 0.0
+            # elif step < 240 * 3 * 2:
+            #     tau = robot.compute_torque(target, quat_desire, fz_desired=0.1, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+            #     ft_ref[step] = 0.1
+            # elif step < 240 * 3 * 3:
+            #     tau = robot.compute_torque(target, quat_desire, fz_desired=0.2, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+            #     ft_ref[step] = 0.2
+            # elif step < 240 * 3 * 4:
+            #     tau = robot.compute_torque(target, quat_desire, fz_desired=1.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+            #     ft_ref[step] = 1.0
+            # elif step < 240 * 3 * 5:
+            #     tau = robot.compute_torque(target, quat_desire, fz_desired=0.5, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+            #     ft_ref[step] = 0.5
+            # else:
+            #     tau = robot.compute_torque(target, quat_desire, fz_desired=0.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+            #     ft_ref[step] = 0.0
+            tau = robot.compute_torque(target, quat_desire, fz_desired=(step / 240 / 6), use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+            ft_ref[step] = step / 240 / 6
             robot.apply_torque(tau)
 
             eef_pos[step] = robot.x_pos.reshape(-1,)
@@ -75,8 +77,8 @@ def main():
             axs[j].plot(err[:, j], label=legend)
 
         ft_err = ft_readings - ft_ref
-        axs[3].plot(ft_err, label=legend)
-        axs[3].set_ylim([-1.0, 1.0])
+        axs[3].plot(ft_readings, label=legend)
+        axs[3].set_ylim([-5, 5])
 
     run_controller(use_ext_tau=True, nullspace_type='full', legend='Obs w/ Full Nullspace')
 

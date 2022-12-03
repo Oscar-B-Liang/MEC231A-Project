@@ -86,14 +86,14 @@ def update_system_para():
     Q_matrix = np.diag([1, 5])
     R_matrix = np.diag([1, 1, 1])
 
-    acc_limit = np.array([[-10, 10], [-10, 10]])
-    vel_limit = np.array([[-10, 10], [-10, 10]])
-    pos_limit = np.array([[-100, 100], [-100, 100]])
-    fz_limit = np.array([[-10, 10]])
+    acc_limit = np.array([[-1, 1], [-1, 1]])
+    vel_limit = np.array([[-1, 1], [-1, 1]])
+    pos_limit = np.array([[0.1, 0.9], [-0.4, 0.4]])
+    fz_limit = np.array([[0.0, 5.0]])
 
     e_max = 1
     # pos_desired = np.zeros((2, horizon+1))
-    pos_k = 1
+    pos_k = 0
     pos_b = 0
     depth_desired = np.zeros(horizon + 1)
     depth_a = 0.1

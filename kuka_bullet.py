@@ -400,7 +400,7 @@ class KukaBullet():
         tau = g + c + tau_task + tau_joint
         return tau
 
-    def set_gains(self, Kp: float = None, Kd: float = None, Kqp: float = None, Kqd: float = None, Ko: float = None):
+    def set_gains(self, Kp: float = None, Kd: float = None, Kqp: float = None, Kqd: float = None, Ko: float = None, Kf: float = None, Kfd: float = None):
         """Set the controller parameters.
 
         Args:
@@ -420,3 +420,7 @@ class KukaBullet():
             self.Kqd = np.diag(Kqd)
         if Ko is not None:
             self.Ko = np.diag(Ko)
+        if Kf is not None:
+            self.Kf = Kf
+        if Kfd is not None:
+            self.Kfd = Kfd
