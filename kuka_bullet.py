@@ -40,7 +40,7 @@ class KukaBullet():
         self.__robot_urdf = os.path.join(root_path, 'robot/model.urdf')
         self.time_step = time_step
         self.jointFrictionForce = 1e-5
-        self.gravity_compensate = 3.1
+        self.gravity_compensate = 4.1
 
         self.create_robot()
         self.reset_robot()
@@ -77,7 +77,8 @@ class KukaBullet():
         self.armJoints = list(self.armJointsInfo.keys())
         self.gripperJoints = list(self.gripperJointsInfo.keys())
 
-        self.graspTargetPos = [0.5325, 0.0, 0.6]
+        # Home position and orietation.
+        self.graspTargetPos = [0.5, 0.0, 0.6]
         self.graspTargetQuat = [1, 0, 0, 0]
 
         self.dof = 7
@@ -103,6 +104,7 @@ class KukaBullet():
         # Reset the controller
         self.q = np.asarray(self.armJointPositions).reshape(-1, 1)
         self.dq = np.zeros_like(self.q)
+        self.fz_old = 0.0
         self.fz = 0.0
         self.tau = np.zeros_like(self.q)
 
@@ -115,6 +117,8 @@ class KukaBullet():
         self.Kd = np.diag([40, 40, 40, 40, 40, 40])
         self.Kqp = np.diag([50, 50, 50, 50, 50, 50, 50])
         self.Kqd = np.diag([8, 8, 8, 8, 8, 8, 8])
+        self.Kf = 1.0
+        self.Kfd = 0.2
 
         # Reset torque observer
         self.r = np.zeros_like(self.q)
@@ -147,6 +151,7 @@ class KukaBullet():
         q, dq, reaction_force, applied_force = list(zip(*states))
         self.q = np.asarray(q).reshape(-1, 1)
         self.dq = np.asarray(dq).reshape(-1, 1)
+        self.fz_old = self.fz
         self.fz = self.gravity_compensate - reaction_force[6][2]
         self.tau = np.asarray(applied_force).reshape(-1, 1)
 
@@ -353,11 +358,15 @@ class KukaBullet():
         dx = np.vstack((self.dx_linear, self.dx_angular))
         dx_err = dx - vel_desire
 
+        # Discrepancy in force.
+        df = self.fz - fz_desired
+        dfd = min(self.fz - self.fz_old, 1.0)
+
         # Task space controller, simply give open loop desired force.
         M = self.compute_inertial(self.q.reshape(-1,))
         J = self.compute_jacobian(self.q.reshape(-1,))
         M_task = self.compute_task_inertial(M, J)
-        fz_err = np.array([[0.0], [0.0], [fz_desired], [0.0], [0.0], [0.0]])
+        fz_err = np.array([[0.0], [0.0], [fz_desired - self.Kf * df + self.Kfd * dfd], [0.0], [0.0], [0.0]])
         tau_task = J.T @ (M_task @ (-self.Kp @ x_err - self.Kd @ dx_err) + fz_err)
 
         # Joint nullspace controller.

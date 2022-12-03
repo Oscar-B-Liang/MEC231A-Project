@@ -7,86 +7,82 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 
-physicsClientId = p.connect(p.GUI)  # p.DIRECT or p.SHARED_MEMORY
-p.resetSimulation(physicsClientId=physicsClientId)
-p.setGravity(0, 0, -10)
-root_path = os.path.join(os.path.abspath(os.getcwd()), 'gyms')
+def main():
 
-robot = KukaBullet(physicsClientId=physicsClientId, root_path=root_path)
-p.stepSimulation(physicsClientId=physicsClientId)
+    # Connect to physics engine and GUI.
+    physicsClientId = p.connect(p.GUI)
+    p.resetSimulation(physicsClientId=physicsClientId)
+    p.setGravity(0, 0, -9.8)
+    root_path = os.path.join(os.path.abspath(os.getcwd()), 'gyms')
+    robot = KukaBullet(physicsClientId=physicsClientId, root_path=root_path)
+    p.stepSimulation(physicsClientId=physicsClientId)
 
-# A floating ball to collide
-# ball_start = [0.07, 0.3, 0.7]
-# colcid = p.createCollisionShape(p.GEOM_SPHERE, radius=0.05, physicsClientId=physicsClientId)
-# sphereid = p.createMultiBody(baseMass=1, baseCollisionShapeIndex=colcid,
-#                              basePosition=ball_start, physicsClientId=physicsClientId)
-# cid = p.createConstraint(sphereid, -1, -1, -1, p.JOINT_FIXED, [0, 0, 0], [0, 0, 0], ball_start, physicsClientId=physicsClientId)
+    # The end-effector should always be pointing down.
+    quat_desire = np.asarray(robot.graspTargetQuat)
 
-rad = 0.05
-o = np.asarray(robot.graspTargetPos) - np.array([rad, 0, 0])
+    fig = plt.figure(figsize=(15, 10))
+    axs = [plt.subplot(4, 1, i + 1) for i in range(4)]
 
-quat_desire = np.asarray(robot.graspTargetQuat)
+    def run_controller(use_ext_tau, nullspace_type, legend):
 
-fig = plt.figure(figsize=(15, 10))
-axs = [plt.subplot(3, 1, i + 1) for i in range(3)]
+        # Reset the robot to the home position.
+        robot.reset_robot()
+        robot.step_robot(steps=1, sleep=True)
+        robot.set_gains(Kp=[100] * 6, Kd=[20] * 6, Kqp=[50] * 7, Kqd=[5] * 7, Ko=[50] * 7)
 
-fig2 = plt.figure(figsize=(15, 10))
-axs2 = [plt.subplot(8, 1, i + 1) for i in range(8)]
+        eef_pos = np.zeros((240 * 3 * 6, 3))
+        ref = np.zeros((240 * 3 * 6, 3))
+        ft_readings = np.zeros((240 * 3 * 6))
+        ft_ref = np.zeros((240 * 3 * 6))
 
-def run_controller(use_ext_tau, nullspace_type, legend):
-    robot.reset_robot()
-    robot.step_robot(steps=1, sleep=True)
+        for step in range(240 * 3 * 6):
+            robot.step_robot(steps=1, sleep=False)
 
-    robot.set_gains(
-        Kp=[100] * 6,
-        Kd=[20] * 6,
-        Kqp=[50] * 7,
-        Kqd=[5] * 7,
-        Ko=[50] * 7
-    )
+            if step < 240 * 3 * 3:
+                x = 0.05 * step / (240 * 3)
+                target = np.asarray([x, 0.0, 0.0]) + np.asarray(robot.graspTargetPos)
+            else:
+                x = 0.05 * (240 * 3 * 6 - step) / (240 * 3)
+                target = np.asarray([x, 0.0, 0.0]) + np.asarray(robot.graspTargetPos)
 
-    eef_pos = np.zeros((240 * 3 * 3, 3))
-    ref = np.zeros((240 * 3 * 3, 3))
-    external_torques = np.zeros((240 * 3 * 3, 7))
-    ft_readings = np.zeros((240 * 3 * 3))
+            if step < 240 * 3:
+                tau = robot.compute_torque(target, quat_desire, fz_desired=0.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+                ft_ref[step] = 0.0
+            elif step < 240 * 3 * 2:
+                tau = robot.compute_torque(target, quat_desire, fz_desired=1.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+                ft_ref[step] = 1.0
+            elif step < 240 * 3 * 3:
+                tau = robot.compute_torque(target, quat_desire, fz_desired=2.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+                ft_ref[step] = 2.0
+            elif step < 240 * 3 * 4:
+                tau = robot.compute_torque(target, quat_desire, fz_desired=1.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+                ft_ref[step] = 1.0
+            elif step < 240 * 3 * 5:
+                tau = robot.compute_torque(target, quat_desire, fz_desired=0.5, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+                ft_ref[step] = 0.5
+            else:
+                tau = robot.compute_torque(target, quat_desire, fz_desired=0.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
+                ft_ref[step] = 0.0
+            robot.apply_torque(tau)
 
-    for step in range(240 * 3 * 3):
-        robot.step_robot(steps=1, sleep=False)
+            eef_pos[step] = robot.x_pos.reshape(-1,)
+            ref[step] = target
+            ft_readings[step] = robot.fz
 
-        x = step / (240 * 3)
-        target = rad * np.asarray([x, 0.0, 0.0]) + o
+        # Plot
+        err = eef_pos - ref
+        for j in range(3):
+            axs[j].plot(err[:, j], label=legend)
 
-        if step < 240 * 3:
-            tau = robot.compute_torque(target, quat_desire, fz_desired=0.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
-        elif step < 240 * 3 * 2:
-            tau = robot.compute_torque(target, quat_desire, fz_desired=1.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
-        else:
-            tau = robot.compute_torque(target, quat_desire, fz_desired=2.0, use_ext_tau=use_ext_tau, nullspace_type=nullspace_type, restPoses=None)
-        robot.apply_torque(tau)
+        ft_err = ft_readings - ft_ref
+        axs[3].plot(ft_err, label=legend)
+        axs[3].set_ylim([-1.0, 1.0])
 
-        eef_pos[step] = robot.x_pos.reshape(-1,)
-        ref[step] = target
-        external_torques[step] = robot.tau_external.reshape(-1,)
-        ft_readings[step] = robot.fz
+    run_controller(use_ext_tau=True, nullspace_type='full', legend='Obs w/ Full Nullspace')
 
-    # Plot
-    err = abs(eef_pos - ref)
-    for j in range(3):
-        axs[j].plot(err[:, j], label=legend)
+    plt.legend()
+    plt.show()
 
-    for j in range(7):
-        axs2[j].plot(external_torques[:, j], label=legend)
 
-    axs2[7].plot(ft_readings, label=legend)
-    axs2[7].set_ylim(-3.0, 3.0)
-
-# run_controller(use_ext_tau=False, nullspace_type='full', legend='No obs w/ Full Nullspace')
-# run_controller(use_ext_tau=False, nullspace_type='linear', legend='No obs w/ Linear Nullspace')
-# run_controller(use_ext_tau=False, nullspace_type='contact', legend='No obs w/ Contact Nullspace')
-
-run_controller(use_ext_tau=True, nullspace_type='full', legend='Obs w/ Full Nullspace')
-# run_controller(use_ext_tau=True, nullspace_type='linear', legend='Obs w/ Linear Nullspace')
-# run_controller(use_ext_tau=True, nullspace_type='contact', legend='Obs w/ Contact Nullspace')
-
-plt.legend()
-plt.show()
+if __name__ == "__main__":
+    main()
