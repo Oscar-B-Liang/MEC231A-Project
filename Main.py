@@ -1,10 +1,10 @@
-# from kuka_bullet import KukaBullet
+from kuka_bullet import KukaBullet
 import System_Parameters as Para
 import MPC
 import numpy as np
 import Main_func as Func
 import os
-# import pybullet as p
+import pybullet as p
 from matplotlib import pyplot as plt
 
 
