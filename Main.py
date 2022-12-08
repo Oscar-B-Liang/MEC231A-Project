@@ -1,13 +1,18 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 from kuka_bullet import KukaBullet
 =======
 # from kuka_bullet import KukaBullet
+>>>>>>> Zedai-Yang
+=======
+from kuka_bullet import KukaBullet
 >>>>>>> Zedai-Yang
 import System_Parameters as Para
 import MPC
 import numpy as np
 import Main_func as Func
 import os
+<<<<<<< HEAD
 <<<<<<< HEAD
 import pybullet as p
 from matplotlib import pyplot as plt
@@ -16,6 +21,9 @@ from matplotlib import pyplot as plt
 def main():
 =======
 # import pybullet as p
+=======
+import pybullet as p
+>>>>>>> Zedai-Yang
 from matplotlib import pyplot as plt
 
 
