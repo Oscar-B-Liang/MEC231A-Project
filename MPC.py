@@ -52,7 +52,7 @@ def solve_mpc():
         for t in model.nIDX:
             # depth_err = Para.calculate_depth(model.x[2, t], model.x[3, t], model.x[4, t]) - depth_d[t]
             depth_err = Para.calculate_depth(model.x[2, t], model.x[3, t], model.x[4, t]) - \
-                        (depth_a * model.x[0, t] + depth_b * model.x[1, t] + depth_c)
+                (depth_a * model.x[0, t] + depth_b * model.x[1, t] + depth_c)
             cost_depth += depth_err * model.Q[1, 1] * depth_err
         for t in _model.tIDX:
             for i in _model.uIDX:
@@ -65,7 +65,7 @@ def solve_mpc():
     # Constraints:
     def equality_const_rule(_model, i, t):
         return sum(_model.A[i, j] * _model.x[j, t] for j in _model.xIDX) + \
-               sum(_model.B[i, j] * _model.u[j, t] for j in _model.uIDX) == _model.x[i, t+1]
+            sum(_model.B[i, j] * _model.u[j, t] for j in _model.uIDX) == _model.x[i, t + 1]
 
     model.equality_constraints = pyo.Constraint(model.xIDX, model.tIDX, rule=equality_const_rule)
 
@@ -101,6 +101,16 @@ def solve_mpc():
     model.state_constraint1 = pyo.Constraint(model.xIDX, model.nIDX, rule=state_const_rule1)
     model.state_constraint2 = pyo.Constraint(model.xIDX, model.nIDX, rule=state_const_rule2)
 
+    # force_rate_constraint
+    def force_const_rule1(_model, i):
+        return _model.x[4, i + 1] - _model.x[4, i] <= 0.01
+
+    def force_const_rule2(_model, i):
+        return _model.x[4, i + 1] - _model.x[4, i] >= -0.01
+
+    model.force_constraint1 = pyo.Constraint(model.tIDX, rule=force_const_rule1)
+    model.force_constraint2 = pyo.Constraint(model.tIDX, rule=force_const_rule2)
+
     # position constraint
     '''def pos_const_rule1(_model, i, t):
         return _model.x[i, t] <= pos_d[i, t] + e_max
@@ -112,7 +122,7 @@ def solve_mpc():
     model.pos_constraint2 = pyo.Constraint(model.pIDX, model.nIDX, rule=pos_const_rule2)'''
 
     solver = pyo.SolverFactory('ipopt')
-    model.pprint()
+    # model.pprint()
     results = solver.solve(model)
 
     if str(results.solver.termination_condition) == "optimal":
