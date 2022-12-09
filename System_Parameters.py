@@ -113,7 +113,7 @@ def update_system_para():
     depth_a = 1.0
     depth_b = 1.0
     depth_c = -0.4
-    k_v = 1.0
+    k_v = -1.0
     k_f = 0.2
 
 

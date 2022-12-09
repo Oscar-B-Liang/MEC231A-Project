@@ -89,7 +89,7 @@ def run_pybullet(x0, xf, horizon, ts):
     plt.fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, x_opt[1, :] + 0.5 * depth_desired, facecolor='red', alpha=0.1)
     plt.plot(eef_pos[:, 0], eef_pos[:, 1] + 0.5 * depth_simulate, color='green', label="actual")
     plt.plot(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_simulate, color='green')
-    plt.fill_between(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_simulate, eef_pos[:, 1] + 0.5 * depth_desired[1:], facecolor='green', alpha=0.1)
+    plt.fill_between(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_simulate, eef_pos[:, 1] + 0.5 * depth_simulate, facecolor='green', alpha=0.1)
     plt.title("Line Width Tracking")
     plt.ylim([-0.2, 0.2])
     plt.ylabel("Half Line Width")
@@ -99,6 +99,6 @@ def run_pybullet(x0, xf, horizon, ts):
 
 
 if __name__ == "__main__":
-    run_pybullet(x0=[0.50, 0, 0, 0], xf=[0.65, 0, 0, 0], horizon=2000, ts=0.001)
+    run_pybullet(x0=[0.50, 0, 0, 0], xf=[0.65, 0, 0, 0], horizon=1000, ts=0.001)
     # horizon_min = Func.find_smallest_horizon(x0=[0.50, 0, 0, 0], xf=[0.65, 0, 0, 0], ts=0.001)
     # feasibility, x_opt, u_opt = Func.run_openloop_mpc(x0=[0.50, 0, 0, 0], xf=[0.65, 0, 0, 0], horizon=2000, ts=0.001)
