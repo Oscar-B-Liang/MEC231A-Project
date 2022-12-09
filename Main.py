@@ -25,9 +25,6 @@ def run_pybullet(x0, xf, horizon, ts):
     eef_vel = np.zeros((horizon, 3))
     ft_readings = np.zeros((horizon))
 
-    fig = plt.figure(figsize=(15, 10))
-    axs = [plt.subplot(5, 1, i + 1) for i in range(5)]
-
     feasibility, x_opt, u_opt = Func.run_openloop_mpc(x0, xf, horizon, ts)
     depth_mpc = Func.calculate_depth(x_opt[2, :], x_opt[3, :], x_opt[4, :])
     depth_desired = Para.get_depth_desired(x_opt[0, :], x_opt[1, :])
@@ -58,34 +55,35 @@ def run_pybullet(x0, xf, horizon, ts):
         ft_readings[step] = robot.fz
 
     depth_simulate = Func.calculate_depth(eef_vel[:, 0], eef_vel[:, 1], ft_readings)
+    fig = plt.figure(figsize=(15, 5))
+    axs = [plt.subplot(1, 3, i + 1) for i in range(3)]
 
-    for j in range(3):
-        axs[j].plot(eef_pos[:, j])
-        if j == 0:
-            axs[j].plot(x_opt[0, :])
-
+    axs[0].plot(x_opt[0, :], label="computed")
+    axs[0].plot(eef_pos[:, 0], label="actual")
     axs[0].set_ylim([0.45, 0.7])
-    axs[1].set_ylim([-0.01, 0.01])
-    axs[2].set_ylim([0.5, 0.7])
+    axs[0].set_title("X Coordinate")
+    axs[0].legend()
 
-    axs[3].plot(ft_readings)
-    axs[3].plot(x_opt[4, :])
-    axs[3].set_ylim([-3, 3])
+    axs[1].plot(x_opt[4, :], label="computed")
+    axs[1].plot(ft_readings, label="actual")
+    axs[1].set_ylim([-5, 5])
+    axs[1].set_title("Pressing Force")
+    axs[1].legend()
 
-    axs[4].plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_mpc, color='blue')
-    axs[4].plot(x_opt[0, :], x_opt[1, :] - 0.5 * depth_mpc, color='blue')
-    axs[4].fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_mpc, x_opt[1, :] + 0.5 * depth_mpc, facecolor='blue',
+    axs[2].plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_mpc, color='blue', label="computed")
+    axs[2].plot(x_opt[0, :], x_opt[1, :] - 0.5 * depth_mpc, color='blue')
+    axs[2].fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_mpc, x_opt[1, :] + 0.5 * depth_mpc, facecolor='blue',
                         alpha=0.1)
-    axs[4].plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_desired, color='red')
-    axs[4].plot(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, color='red')
-    axs[4].fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, x_opt[1, :] + 0.5 * depth_desired,
+    axs[2].plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_desired, color='red', label="target")
+    axs[2].plot(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, color='red')
+    axs[2].fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, x_opt[1, :] + 0.5 * depth_desired,
                         facecolor='red', alpha=0.1)
-    print(eef_pos.shape)
-    print(depth_desired.shape)
-    axs[4].plot(eef_pos[:, 0], eef_pos[:, 1] + 0.5 * depth_desired[1:], color='green')
-    axs[4].plot(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_desired[1:], color='green')
-    axs[4].fill_between(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_desired[1:], eef_pos[:, 1] + 0.5 * depth_desired[1:],
+    axs[2].plot(eef_pos[:, 0], eef_pos[:, 1] + 0.5 * depth_desired[1:], color='green', label="actual")
+    axs[2].plot(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_desired[1:], color='green')
+    axs[2].fill_between(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_desired[1:], eef_pos[:, 1] + 0.5 * depth_desired[1:],
                         facecolor='green', alpha=0.1)
+    axs[2].set_title("Line Width")
+    axs[2].legend()
 
     # axs[4].plot(ft_readings + ())
     plt.show()
