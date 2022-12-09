@@ -26,9 +26,9 @@ def find_smallest_horizon(x0: object, xf: object, ts: object) -> object:
         horizon = horizon * 2
         Para.set_horizon(horizon)
         Para.set_time_step(ts)
+        Para.update_system_para()
         Para.set_initial_state(x0)
         Para.set_final_state(xf)
-        Para.update_system_para()
         [model, feasibility, x_opt, u_opt, j_opt] = MPC.solve_mpc()
         print('Horizon ' + str(horizon) + ', feasibility: ', feasibility)
         if feasibility:
