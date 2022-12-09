@@ -86,9 +86,9 @@ def update_system_para():
     Q_matrix = np.diag([1, 5])
     R_matrix = np.diag([1, 1, 1])
 
-    acc_limit = np.array([[-1, 1], [-1, 1]])
-    vel_limit = np.array([[-1, 1], [-1, 1]])
-    pos_limit = np.array([[0.1, 0.9], [-0.4, 0.4]])
+    acc_limit = np.array([[-1, 1], [0.0, 0.0]])
+    vel_limit = np.array([[0, 5], [0.0, 0.0]])
+    pos_limit = np.array([[0.1, 0.9], [-0.01, 0.01]])
     fz_limit = np.array([[0.0, 5.0]])
 
     e_max = 1
@@ -96,8 +96,8 @@ def update_system_para():
     pos_k = 0
     pos_b = 0
     depth_desired = np.zeros(horizon + 1)
-    depth_a = 0.1
-    depth_b = 0.1
+    depth_a = 1.0
+    depth_b = 1.0
     depth_c = 0
 
 
@@ -144,5 +144,5 @@ def get_pos_desired():
 
 def calculate_depth(v_x, v_y, force):
     k_v = 1.0
-    k_f = 1.0
+    k_f = 0.1
     return k_v * (v_x ** 2 + v_y ** 2) + k_f * force

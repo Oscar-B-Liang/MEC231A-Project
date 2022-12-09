@@ -52,7 +52,7 @@ class KukaBullet():
         # Load the table (default coefficient of friction 1.0).
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         self.tableId = p.loadURDF("table/table.urdf", basePosition=[0.4, 0, 0.0], useFixedBase=True)
-        p.changeDynamics(bodyUniqueId=self.tableId, linkIndex=-1, lateralFriction=0.0, spinningFriction=0.0, rollingFriction=0.0)
+        p.changeDynamics(bodyUniqueId=self.tableId, linkIndex=-1, lateralFriction=0.1, spinningFriction=0.1, rollingFriction=0.1)
 
         # Load the robot
         flags = p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES | p.URDF_USE_INERTIA_FROM_FILE | p.URDF_USE_SELF_COLLISION

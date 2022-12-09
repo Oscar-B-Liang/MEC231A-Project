@@ -103,10 +103,10 @@ def solve_mpc():
 
     # force_rate_constraint
     def force_const_rule1(_model, i):
-        return _model.x[4, i + 1] - _model.x[4, i] <= 0.01
+        return _model.x[4, i + 1] - _model.x[4, i] <= 0.1
 
     def force_const_rule2(_model, i):
-        return _model.x[4, i + 1] - _model.x[4, i] >= -0.01
+        return _model.x[4, i + 1] - _model.x[4, i] >= -0.1
 
     model.force_constraint1 = pyo.Constraint(model.tIDX, rule=force_const_rule1)
     model.force_constraint2 = pyo.Constraint(model.tIDX, rule=force_const_rule2)
