@@ -55,37 +55,35 @@ def run_pybullet(x0, xf, horizon, ts):
         ft_readings[step] = robot.fz
 
     depth_simulate = Func.calculate_depth(eef_vel[:, 0], eef_vel[:, 1], ft_readings)
-    fig = plt.figure(figsize=(15, 5))
-    axs = [plt.subplot(1, 3, i + 1) for i in range(3)]
 
-    axs[0].plot(x_opt[0, :], label="computed")
-    axs[0].plot(eef_pos[:, 0], label="actual")
-    axs[0].set_ylim([0.45, 0.7])
-    axs[0].set_title("X Coordinate")
-    axs[0].legend()
+    fig_1 = plt.figure(figsize=(5, 5))
+    plt.plot(x_opt[0, :], label="computed")
+    plt.plot(eef_pos[:, 0], label="actual")
+    plt.ylim([0.45, 0.7])
+    plt.title("X Coordinate")
+    plt.legend()
+    plt.show()
 
-    axs[1].plot(x_opt[4, :], label="computed")
-    axs[1].plot(ft_readings, label="actual")
-    axs[1].set_ylim([-5, 5])
-    axs[1].set_title("Pressing Force")
-    axs[1].legend()
+    fig_2 = plt.figure(figsize=(5, 5))
+    plt.plot(x_opt[4, :], label="computed")
+    plt.plot(ft_readings, label="actual")
+    plt.ylim([-5, 5])
+    plt.title("Pressing Force")
+    plt.legend()
+    plt.show()
 
-    axs[2].plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_mpc, color='blue', label="computed")
-    axs[2].plot(x_opt[0, :], x_opt[1, :] - 0.5 * depth_mpc, color='blue')
-    axs[2].fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_mpc, x_opt[1, :] + 0.5 * depth_mpc, facecolor='blue',
-                        alpha=0.1)
-    axs[2].plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_desired, color='red', label="target")
-    axs[2].plot(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, color='red')
-    axs[2].fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, x_opt[1, :] + 0.5 * depth_desired,
-                        facecolor='red', alpha=0.1)
-    axs[2].plot(eef_pos[:, 0], eef_pos[:, 1] + 0.5 * depth_desired[1:], color='green', label="actual")
-    axs[2].plot(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_desired[1:], color='green')
-    axs[2].fill_between(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_desired[1:], eef_pos[:, 1] + 0.5 * depth_desired[1:],
-                        facecolor='green', alpha=0.1)
-    axs[2].set_title("Line Width")
-    axs[2].legend()
-
-    # axs[4].plot(ft_readings + ())
+    fig_3 = plt.figure(figsize=(5, 5))
+    plt.plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_mpc, color='blue', label="computed")
+    plt.plot(x_opt[0, :], x_opt[1, :] - 0.5 * depth_mpc, color='blue')
+    plt.fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_mpc, x_opt[1, :] + 0.5 * depth_mpc, facecolor='blue', alpha=0.1)
+    plt.plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_desired, color='red', label="target")
+    plt.plot(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, color='red')
+    plt.fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, x_opt[1, :] + 0.5 * depth_desired, facecolor='red', alpha=0.1)
+    plt.plot(eef_pos[:, 0], eef_pos[:, 1] + 0.5 * depth_desired[1:], color='green', label="actual")
+    plt.plot(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_desired[1:], color='green')
+    plt.fill_between(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_desired[1:], eef_pos[:, 1] + 0.5 * depth_desired[1:], facecolor='green', alpha=0.1)
+    plt.title("Line Width")
+    plt.legend()
     plt.show()
 
 
