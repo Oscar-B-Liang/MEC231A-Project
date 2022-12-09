@@ -62,7 +62,7 @@ def run_pybullet(x0, xf, horizon, ts):
     plt.ylim([0.45, 0.7])
     plt.title("X Coordinate")
     plt.legend()
-    plt.show()
+    plt.savefig("figures/x_coordinate.png")
 
     fig_2 = plt.figure(figsize=(5, 5))
     plt.plot(x_opt[4, :], label="computed")
@@ -70,7 +70,7 @@ def run_pybullet(x0, xf, horizon, ts):
     plt.ylim([-5, 5])
     plt.title("Pressing Force")
     plt.legend()
-    plt.show()
+    plt.savefig("figures/pressing_force.png")
 
     fig_3 = plt.figure(figsize=(5, 5))
     plt.plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_mpc, color='blue', label="computed")
@@ -84,7 +84,7 @@ def run_pybullet(x0, xf, horizon, ts):
     plt.fill_between(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_desired[1:], eef_pos[:, 1] + 0.5 * depth_desired[1:], facecolor='green', alpha=0.1)
     plt.title("Line Width")
     plt.legend()
-    plt.show()
+    plt.savefig("figures/line_width.png")
 
 
 if __name__ == "__main__":
