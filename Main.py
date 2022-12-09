@@ -28,12 +28,15 @@ def run_pybullet(x0, xf, horizon, ts):
     feasibility, x_opt, u_opt = Func.run_openloop_mpc(x0, xf, horizon, ts)
     depth_mpc = Func.calculate_depth(x_opt[2, :], x_opt[3, :], x_opt[4, :])
     depth_desired = Para.get_depth_desired(x_opt[0, :], x_opt[1, :])
+    if feasibility:
+        print("A feasible solution is found!")
+    else:
+        print("This problem may be infeasible!")
 
     robot.reset_robot()
     robot.step_robot(steps=1, sleep=False)
     robot.set_gains(Kp=[200, 200, 100, 100, 100, 100], Kd=[10, 10, 20, 20, 20, 20], Kqp=[50] * 7, Kqd=[5] * 7, Ko=[50] * 7, Kf=1.0)
     desired_height = robot.graspTargetPos[2]
-    print(desired_height)
 
     # Stablizing the force torque sensor.
     for step in range(240 * 3 * 6):
@@ -55,34 +58,42 @@ def run_pybullet(x0, xf, horizon, ts):
         ft_readings[step] = robot.fz
 
     depth_simulate = Func.calculate_depth(eef_vel[:, 0], eef_vel[:, 1], ft_readings)
+    depth_simulate = np.where(ft_readings > 0, depth_simulate, 0)
 
-    fig_1 = plt.figure(figsize=(5, 5))
+    fig_1 = plt.figure()
     plt.plot(x_opt[0, :], label="computed")
     plt.plot(eef_pos[:, 0], label="actual")
     plt.ylim([0.45, 0.7])
-    plt.title("X Coordinate")
+    plt.title("X Coordinate Tracking")
+    plt.xlabel("Time step")
+    plt.ylabel("X Coordinates")
     plt.legend()
     plt.savefig("figures/x_coordinate.png")
 
-    fig_2 = plt.figure(figsize=(5, 5))
+    fig_2 = plt.figure()
     plt.plot(x_opt[4, :], label="computed")
     plt.plot(ft_readings, label="actual")
     plt.ylim([-5, 5])
-    plt.title("Pressing Force")
+    plt.xlabel("Time step")
+    plt.ylabel("Pressing Force")
+    plt.title("Pressing Force Tracking")
     plt.legend()
     plt.savefig("figures/pressing_force.png")
 
-    fig_3 = plt.figure(figsize=(5, 5))
+    fig_3 = plt.figure()
     plt.plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_mpc, color='blue', label="computed")
     plt.plot(x_opt[0, :], x_opt[1, :] - 0.5 * depth_mpc, color='blue')
     plt.fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_mpc, x_opt[1, :] + 0.5 * depth_mpc, facecolor='blue', alpha=0.1)
     plt.plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_desired, color='red', label="target")
     plt.plot(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, color='red')
     plt.fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, x_opt[1, :] + 0.5 * depth_desired, facecolor='red', alpha=0.1)
-    plt.plot(eef_pos[:, 0], eef_pos[:, 1] + 0.5 * depth_desired[1:], color='green', label="actual")
-    plt.plot(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_desired[1:], color='green')
-    plt.fill_between(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_desired[1:], eef_pos[:, 1] + 0.5 * depth_desired[1:], facecolor='green', alpha=0.1)
-    plt.title("Line Width")
+    plt.plot(eef_pos[:, 0], eef_pos[:, 1] + 0.5 * depth_simulate, color='green', label="actual")
+    plt.plot(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_simulate, color='green')
+    plt.fill_between(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_simulate, eef_pos[:, 1] + 0.5 * depth_desired[1:], facecolor='green', alpha=0.1)
+    plt.title("Line Width Tracking")
+    plt.ylim([-0.2, 0.2])
+    plt.ylabel("Half Line Width")
+    plt.xlabel("X coordinates")
     plt.legend()
     plt.savefig("figures/line_width.png")
 
