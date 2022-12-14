@@ -55,7 +55,7 @@ def window_scan(gray_img, x0, y0, theta, r):
 
 
 def process_circle_image():
-    files = glob.glob('../data/circles/*/*.jpg')
+    files = glob.glob('../data/new_data/*/*.jpg')
     cv2.namedWindow('output', cv2.WINDOW_NORMAL)
     cv2.namedWindow('cropped', cv2.WINDOW_NORMAL)
     cv2.resizeWindow('output', 800, 450)
@@ -85,7 +85,7 @@ def process_circle_image():
         # Determine the stroke area using binary search with calibrated center line.
         try:
             rs = np.asarray([bilinear_probe(gray_img, x0, y0, t, r) for t in theta])
-            # window_scan(gray_img, x0, y0, theta, r)
+            window_scan(gray_img, x0, y0, theta, r)
         except ValueError:
             print(file, "Invalid Center. ")
             continue
@@ -116,9 +116,9 @@ def process_circle_image():
             'shade': shade
         }
 
-    # import pickle as pkl
-    # with open("circle_data.pkl", "wb") as f:
-    #     pkl.dump(log, f)
+    import pickle as pkl
+    with open("new_data.pkl", "wb") as f:
+        pkl.dump(log, f)
 
     cv2.destroyAllWindows()
     return log

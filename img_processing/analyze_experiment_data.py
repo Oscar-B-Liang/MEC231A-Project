@@ -1,6 +1,7 @@
 import pickle as pkl
 import numpy as np
 from matplotlib import pyplot as plt
+import re
 
 
 def func(width, shade):
@@ -26,57 +27,76 @@ def make_bar_plot(data, labels, xlabel='loc', ylabel=None, title=None, colors=('
 
 def process_data(log):
     F_MAP = {
-        1: 0,
-        2: 1,
-        8: 2
+        2: 0,
+        4: 1,
+        6: 2,
+        8: 3,
+        10: 4
     }
     V_MAP = {
-        1: 0,
-        3: 1
+        4: 0,
+        2: 1,
+        1: 2,
+        0.5: 3,
+        0.25: 4
     }
-    F_W = np.zeros((len(F_MAP), 10))
-    F_S = np.zeros((len(F_MAP), 10))
-    F_Y = np.zeros((len(F_MAP), 10))
-    V_W = np.zeros((len(V_MAP), 10))
-    V_S = np.zeros((len(V_MAP), 10))
-    V_Y = np.zeros((len(F_MAP), 10))
+
+    data = []
 
     for file, params in log.items():
-        loc = int(file[-5])
-        force = int(file[58])
-        speed = int(file[61])
+        attrs = file.split('_')[-1].strip('.jpg').split('xdt')
+        force = int(attrs[0].strip('N'))
+        if len(attrs) == 1:
+            # continue
+            dt = 2.0
+        else:
+            continue
+            dt = float(attrs[1].replace(',', '.'))
+
+        speed = 1 / dt
         width = params['width']
         shade = 255 - params['shade']
         guessed_param = func(width, shade)
-        if speed == 1:
-            F_W[F_MAP[force], loc] = width
-            F_S[F_MAP[force], loc] = shade
-            F_Y[F_MAP[force], loc] = guessed_param
-        if force == 2:
-            V_W[V_MAP[speed], loc] = width
-            V_S[V_MAP[speed], loc] = shade
-            V_Y[V_MAP[speed], loc] = guessed_param
+        data.append((force, width, shade))
+
+    data.sort()
+    data = np.asarray(data)
+    print(data.shape)
+    plt.plot(data[:, 0], data[:, 1])
+    plt.scatter(data[:, 0], data[:, 1])
+    plt.xlabel('Force')
+    plt.ylabel('Width')
+    plt.title('Force-Width Mapping')
+    plt.show()
+
+    plt.plot(data[:, 0], data[:, 2])
+    plt.scatter(data[:, 0], data[:, 2])
+    plt.xlabel('Force')
+    plt.ylabel('Shade')
+    plt.title('Force-Shade Mapping')
+    plt.show()
+
 
     # Plot 1: Force-Width Mapping (fixed speed at x1)
-    make_bar_plot(F_W, labels=('1N', '2N', '8N'), ylabel='width', title='Force-Width Mapping')
+    # make_bar_plot(F_W, labels=('1N', '2N', '8N'), ylabel='width', title='Force-Width Mapping')
 
     # Plot 2: Force-Shade Mapping (fixed speed at x1)
-    make_bar_plot(F_S, labels=('1N', '2N', '8N'), ylabel='shade', title='Force-Shade Mapping')
+    # make_bar_plot(F_S, labels=('1N', '2N', '8N'), ylabel='shade', title='Force-Shade Mapping')
 
     # Plot 3: Speed-Width Mapping (fixed force at 2N)
-    make_bar_plot(V_W, labels=('x1', 'x3'), ylabel='width', title='Speed-Width Mapping')
+    # make_bar_plot(V_W, labels=('x1', 'x3'), ylabel='width', title='Speed-Width Mapping')
 
     # Plot 4: Speed-Width Mapping (fixed force at 2N)
-    make_bar_plot(V_S, labels=('x1', 'x3'), ylabel='shade', title='Speed-Shade Mapping')
+    # make_bar_plot(V_S, labels=('x1', 'x3'), ylabel='shade', title='Speed-Shade Mapping')
 
     # Guessing the function.
-    make_bar_plot(F_Y, labels=('1N', '2N', '8N'), ylabel='param', title='Force-Param Mapping')
+    # make_bar_plot(F_Y, labels=('1N', '2N', '8N'), ylabel='param', title='Force-Param Mapping')
 
 
 def main():
     # from process_experiment_data import process_circle_image
     # log = process_circle_image()
-    with open("circle_data.pkl", "rb") as f:
+    with open("new_data.pkl", "rb") as f:
         log = pkl.load(f)
     process_data(log)
 
