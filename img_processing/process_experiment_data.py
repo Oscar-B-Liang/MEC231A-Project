@@ -54,11 +54,17 @@ def window_scan(gray_img, x0, y0, theta, r):
         cv2.waitKey(10)
 
 
-def process_circle_image():
-    files = glob.glob('../data/new_data/*/*.jpg')
+def process_circle_image(files=None, requires_glob=False):
+    if files is None:
+        files = glob.glob('../data/new_data/*/*.jpg')
+    elif requires_glob:
+        files = glob.glob(files)
+    else:
+        assert isinstance(files, list)
     cv2.namedWindow('output', cv2.WINDOW_NORMAL)
     cv2.namedWindow('cropped', cv2.WINDOW_NORMAL)
     cv2.resizeWindow('output', 800, 450)
+    # cv2.waitKey(0)
 
     log = {}
 
@@ -113,16 +119,20 @@ def process_circle_image():
         log[file] = {
             'width': width,
             'std': std,
-            'shade': shade
+            'shade': shade,
+            'r': r,
+            'rs': rs,
+            'theta': theta,
+            'width_arr': diff,
+            'shades': shades
         }
-
-    import pickle as pkl
-    with open("new_data.pkl", "wb") as f:
-        pkl.dump(log, f)
 
     cv2.destroyAllWindows()
     return log
 
 
 if __name__ == '__main__':
-    process_circle_image()
+    log = process_circle_image()
+    import pickle as pkl
+    with open("new_data.pkl", "wb") as f:
+        pkl.dump(log, f)

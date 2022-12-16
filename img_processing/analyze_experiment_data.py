@@ -42,6 +42,7 @@ def process_data(log):
     }
 
     data = []
+    additional_data = []
 
     for file, params in log.items():
         attrs = file.split('_')[-1].strip('.jpg').split('xdt')
@@ -50,33 +51,37 @@ def process_data(log):
             # continue
             dt = 2.0
         else:
-            continue
+            # continue
             dt = float(attrs[1].replace(',', '.'))
 
         speed = 1 / dt
         width = params['width']
         shade = 255 - params['shade']
         guessed_param = func(width, shade)
-        data.append((force, width, shade))
+        if len(attrs) == 1:
+            data.append((force, width, shade))
+        else:
+            additional_data.append((force, width, shade))
 
     data.sort()
     data = np.asarray(data)
-    print(data.shape)
-    plt.plot(data[:, 0], data[:, 1])
-    plt.scatter(data[:, 0], data[:, 1])
-    plt.xlabel('Force')
-    plt.ylabel('Width')
-    plt.title('Force-Width Mapping')
-    plt.show()
+    additional_data = np.asarray(additional_data)
+    # print(data.shape)
+    # plt.plot(data[:, 0], data[:, 1])
+    # plt.scatter(data[:, 0], data[:, 1])
+    # plt.xlabel('Force')
+    # plt.ylabel('Width')
+    # plt.title('Force-Width Mapping')
+    # plt.show()
 
-    plt.plot(data[:, 0], data[:, 2])
-    plt.scatter(data[:, 0], data[:, 2])
-    plt.xlabel('Force')
-    plt.ylabel('Shade')
-    plt.title('Force-Shade Mapping')
-    plt.show()
+    # plt.plot(data[:, 0], data[:, 2])
+    # plt.scatter(data[:, 0], data[:, 2])
+    # plt.xlabel('Force')
+    # plt.ylabel('Shade')
+    # plt.title('Force-Shade Mapping')
+    # plt.show()
 
-
+    return data, additional_data
     # Plot 1: Force-Width Mapping (fixed speed at x1)
     # make_bar_plot(F_W, labels=('1N', '2N', '8N'), ylabel='width', title='Force-Width Mapping')
 
@@ -93,13 +98,71 @@ def process_data(log):
     # make_bar_plot(F_Y, labels=('1N', '2N', '8N'), ylabel='param', title='Force-Param Mapping')
 
 
-def main():
+# UPPER_LIMIT = 35
+
+def fit_curve(data):
+    f = data[:, 0]
+    w = data[:, 1]
+    s = data[:, 2]
+
+    import pyomo.environ as pyo
+
+    model = pyo.ConcreteModel()
+
+    model.k = pyo.Var()
+    model.c = pyo.Var()
+
+    model.k1 = pyo.Var()
+    model.k2 = pyo.Var()
+
+    model.f = f
+    model.w = w
+    model.s = s
+    model.R = 100
+    model.u = pyo.Var(bounds=(10, 100))
+
+    model.obj = pyo.Objective(expr=sum((model.u - model.k * pyo.exp(model.c * _f) - model.k1 * _w - model.k2 * _s) ** 2
+                                       for _f, _w, _s in zip(model.f, model.w, model.s)
+                                       ) + model.R * (model.u - model.k) ** 2, sense=pyo.minimize)
+    model.normalization = pyo.Constraint(expr=model.k1 ** 2 + model.k2 ** 2 == 1)
+
+    solver = pyo.SolverFactory('ipopt', executable='../ipopt.exe')
+    results = solver.solve(model)
+    results.write()
+    print("MSE Loss: {}".format(pyo.value(model.obj)))
+    ret = pyo.value(model.k), pyo.value(model.c)
+    params = pyo.value(model.k1), pyo.value(model.k2)
+    return ret, params, pyo.value(model.u)
+
+
+def get_model_attr():
     # from process_experiment_data import process_circle_image
     # log = process_circle_image()
     with open("new_data.pkl", "rb") as f:
         log = pkl.load(f)
-    process_data(log)
+    data, additional_data = process_data(log)
+    ret, params, UPPER_LIMIT = fit_curve(np.vstack((data, additional_data)))
+    k, c = ret
+    k1, k2 = params
+
+    plt.plot(data[:, 0], k1 * data[:, 1] + k2 * data[:, 2])
+    plt.scatter(data[:, 0], k1 * data[:, 1] + k2 * data[:, 2])
+    plt.xlabel('Force')
+    plt.ylabel('Derived Parameter')
+    plt.title('Force-Parameter Mapping')
+
+    x = np.linspace(0, 10, 20)
+    y = UPPER_LIMIT - k * np.exp(c * x)
+    plt.plot(x, y, color='r')
+    plt.legend(['actual', 'fitted'])
+    plt.show()
+
+    print("Model: {} - {} * exp({} * force) = {} * width + {} * shade".format(
+        UPPER_LIMIT, k, c, k1, k2)
+    )
+
+    return UPPER_LIMIT, k, c, k1, k2
 
 
 if __name__ == '__main__':
-    main()
+    get_model_attr()
