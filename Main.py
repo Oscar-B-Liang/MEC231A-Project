@@ -33,6 +33,11 @@ def run_pybullet(x0, xf, horizon, ts):
     else:
         print("This problem may be infeasible!")
 
+    # Start logging videos.
+    p.resetDebugVisualizerCamera(cameraDistance=2.5, cameraYaw=40, cameraPitch=-35, cameraTargetPosition=[0, 0, 0])
+    p.setRealTimeSimulation(0, physicsClientId)
+    loggingUniqueId = p.startStateLogging(loggingType=p.STATE_LOGGING_VIDEO_MP4, fileName="video/logging.mp4")
+
     robot.reset_robot()
     robot.step_robot(steps=1, sleep=False)
     robot.set_gains(Kp=[200, 200, 100, 100, 100, 100], Kd=[10, 10, 20, 20, 20, 20], Kqp=[50] * 7, Kqd=[5] * 7, Ko=[50] * 7, Kf=1.0)
@@ -56,6 +61,9 @@ def run_pybullet(x0, xf, horizon, ts):
         eef_pos[step] = robot.x_pos.reshape(-1,)
         eef_vel[step] = robot.dx_linear.reshape(-1,)  # read velocity, need change
         ft_readings[step] = robot.fz
+
+    # Stop logging videos.
+    p.stopStateLogging(loggingUniqueId)
 
     depth_simulate = Func.calculate_depth(eef_vel[:, 0], eef_vel[:, 1], ft_readings)
     depth_simulate = np.where(ft_readings > 0, depth_simulate, 0)
@@ -99,6 +107,6 @@ def run_pybullet(x0, xf, horizon, ts):
 
 
 if __name__ == "__main__":
-    run_pybullet(x0=[0.50, 0, 0, 0], xf=[0.65, 0, 0, 0], horizon=1000, ts=0.001)
+    run_pybullet(x0=[0.50, 0, 0, 0], xf=[0.65, 0, 0, 0], horizon=3000, ts=0.001)
     # horizon_min = Func.find_smallest_horizon(x0=[0.50, 0, 0, 0], xf=[0.65, 0, 0, 0], ts=0.001)
     # feasibility, x_opt, u_opt = Func.run_openloop_mpc(x0=[0.50, 0, 0, 0], xf=[0.65, 0, 0, 0], horizon=2000, ts=0.001)
