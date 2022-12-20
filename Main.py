@@ -8,10 +8,7 @@ import pybullet as p
 from matplotlib import pyplot as plt
 
 
-HORIZONTAL_LENGTH = 200
-
-
-def main():
+def run_pybullet(x0, xf, horizon, ts):
 
     # Connect to physics engine and GUI.
     physicsClientId = p.connect(p.GUI)
@@ -24,34 +21,28 @@ def main():
     # The end-effector should always be pointing down.
     quat_desire = np.asarray(robot.graspTargetQuat)
 
-    # Record the end-effector pose and the force torque sensor responding force.
-    eef_pos = np.zeros((HORIZONTAL_LENGTH, 3))
-    eef_vel = np.zeros((HORIZONTAL_LENGTH, 3))
-    ft_readings = np.zeros((HORIZONTAL_LENGTH))
+    eef_pos = np.zeros((horizon, 3))
+    eef_vel = np.zeros((horizon, 3))
+    ft_readings = np.zeros((horizon))
 
-    # Record the expected, mpc computed and actual line width.
-    target_line_width = np.zeros((HORIZONTAL_LENGTH))
-    mpc_line_width = np.zeros((HORIZONTAL_LENGTH))
-    actual_line_width = np.zeros((HORIZONTAL_LENGTH))
+    feasibility, x_opt, u_opt = Func.run_openloop_mpc(x0, xf, horizon, ts)
+    depth_mpc = Func.calculate_depth(x_opt[2, :], x_opt[3, :], x_opt[4, :])
+    depth_desired = Para.get_depth_desired(x_opt[0, :], x_opt[1, :])
+    if feasibility:
+        print("A feasible solution is found!")
+    else:
+        print("This problem may be infeasible!")
 
-    # Set the parameters for MPC controller.
-    x0 = np.array([0.50, 0, 0, 0, 5])
-    xf = np.array([0.65, 0, 0, 0, 6.5])
-    Para.set_horizon(HORIZONTAL_LENGTH)
-    Para.set_time_step(0.01)
-    Para.set_initial_state(x0)
-    Para.set_final_state(xf)
-    Para.update_system_para()
-    pos_k, pos_b, depth_a, depth_b, depth_c, e_max = Para.get_pos_desired()
-    [model, feasibility, x_opt, u_opt, j_opt] = MPC.solve_mpc()
-    print(feasibility)
+    # Start logging videos.
+    p.resetDebugVisualizerCamera(cameraDistance=2.5, cameraYaw=40, cameraPitch=-35, cameraTargetPosition=[0, 0, 0])
+    p.setRealTimeSimulation(0, physicsClientId)
+    loggingUniqueId = p.startStateLogging(loggingType=p.STATE_LOGGING_VIDEO_MP4, fileName="video/logging.mp4")
 
     # Set the robot controller parameters for the Pybullet simulator.
     robot.reset_robot()
     robot.step_robot(steps=1, sleep=False)
     robot.set_gains(Kp=[300, 300, 100, 100, 100, 100], Kd=[10, 10, 20, 20, 20, 20], Kqp=[50] * 7, Kqd=[5] * 7, Ko=[50] * 7, Kf=1.0)
     desired_height = robot.graspTargetPos[2]
-    print(desired_height)
 
     # Stablizing the force torque sensor.
     for step in range(240 * 3 * 6):
@@ -60,9 +51,7 @@ def main():
         tau = robot.compute_torque(target, quat_desire, fz_desired=(step / 240 / 6), use_ext_tau=True, nullspace_type='full', restPoses=None)
         robot.apply_torque(tau)
 
-    for step in range(HORIZONTAL_LENGTH):
-
-        # Send the controller command to simulator.
+    for step in range(horizon):
         desired_height = robot.graspTargetPos[2]
         target = np.array([x_opt[0, step], x_opt[1, step], desired_height])
         desired_vel = np.array([x_opt[2, step], x_opt[3, step], 0.0, 0.0, 0.0, 0.0])
@@ -72,53 +61,54 @@ def main():
 
         # record end-effector pose and force torque readings.
         eef_pos[step] = robot.x_pos.reshape(-1,)
-        eef_vel[step] = robot.dx_linear.reshape(-1,)
+        eef_vel[step] = robot.dx_linear.reshape(-1,)  # read velocity, need change
         ft_readings[step] = robot.fz
 
-        # record linme width.
-        target_line_width[step] = depth_a * x_opt[0, step] + depth_b * x_opt[1, step] + depth_c
-        if ft_readings[step] >= 0:
-            actual_line_width[step] = Para.calculate_depth(eef_vel[step, 0], eef_vel[step, 1], ft_readings[step])
-        else:
-            actual_line_width[step] = 0
-        mpc_line_width[step] = Para.calculate_depth(x_opt[2, step], x_opt[3, step], x_opt[4, step])
+    # Stop logging videos.
+    p.stopStateLogging(loggingUniqueId)
 
-    # Open the plotting canvas.
-    fig_1 = plt.figure(figsize=(15, 10))
-    axs_1 = [plt.subplot(4, 1, i + 1) for i in range(4)]
+    depth_simulate = Func.calculate_depth(eef_vel[:, 0], eef_vel[:, 1], ft_readings)
+    depth_simulate = np.where(ft_readings > 0, depth_simulate, 0)
 
-    for j in range(3):
-        axs_1[j].plot(eef_pos[:, j])
-        axs_1[j].plot(x_opt[j, :])
-        axs_1[j].legend()
+    fig_1 = plt.figure()
+    plt.plot(x_opt[0, :], label="computed")
+    plt.plot(eef_pos[:, 0], label="actual")
+    plt.ylim([0.45, 0.7])
+    plt.title("X Coordinate Tracking")
+    plt.xlabel("Time step")
+    plt.ylabel("X Coordinates")
+    plt.legend()
+    plt.savefig("figures/x_coordinate.png")
 
-    axs_1[0].set_ylim([0.45, 0.7])
-    axs_1[1].set_ylim([-0.1, 0.1])
-    axs_1[2].set_ylim([0.5, 0.7])
-    axs_1[3].plot(ft_readings)
-    axs_1[3].plot(x_opt[4, :])
-    axs_1[3].set_ylim([-5, 5])
-    axs_1[3].legend()
+    fig_2 = plt.figure()
+    plt.plot(x_opt[4, :], label="computed")
+    plt.plot(ft_readings, label="actual")
+    plt.ylim([-5, 5])
+    plt.xlabel("Time step")
+    plt.ylabel("Pressing Force")
+    plt.title("Pressing Force Tracking")
+    plt.legend()
+    plt.savefig("figures/pressing_force.png")
 
-    # Open another plotting canvas.
-    fig_2 = plt.figure(figsize=(15, 10))
-    axs_2 = [plt.subplot(3, 1, i + 1) for i in range(3)]
-
-    for j in range(2):
-        axs_2[j].plot(eef_vel[:, j], label="actual")
-        axs_2[j].plot(x_opt[j + 2, :], label="computed")
-        axs_2[j].legend()
-
-    axs_2[2].plot(target_line_width, label="target")
-    axs_2[2].plot(mpc_line_width, label="computed")
-    axs_2[2].plot(actual_line_width, label="actual")
-    axs_2[2].set_ylim([-1, 1])
-    axs_2[2].legend()
-
-    print(x_opt[0, :])
-
-    plt.show()
+    fig_3 = plt.figure()
+    plt.plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_mpc, color='blue', label="computed")
+    plt.plot(x_opt[0, :], x_opt[1, :] - 0.5 * depth_mpc, color='blue')
+    plt.fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_mpc, x_opt[1, :] + 0.5 * depth_mpc, facecolor='blue', alpha=0.1)
+    plt.plot(x_opt[0, :], x_opt[1, :] + 0.5 * depth_desired, color='red', label="target")
+    plt.plot(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, color='red')
+    plt.fill_between(x_opt[0, :], x_opt[1, :] - 0.5 * depth_desired, x_opt[1, :] + 0.5 * depth_desired, facecolor='red', alpha=0.1)
+    plt.plot(eef_pos[:, 0], eef_pos[:, 1] + 0.5 * depth_simulate, color='green', label="actual")
+    plt.plot(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_simulate, color='green')
+    plt.fill_between(eef_pos[:, 0], eef_pos[:, 1] - 0.5 * depth_simulate, eef_pos[:, 1] + 0.5 * depth_simulate, facecolor='green', alpha=0.1)
+    plt.title("Line Width Tracking")
+    plt.ylim([-0.2, 0.2])
+    plt.ylabel("Half Line Width")
+    plt.xlabel("X coordinates")
+    plt.legend()
+    plt.savefig("figures/line_width.png")
 
 
 if __name__ == "__main__":
-    main()
+    run_pybullet(x0=[0.50, 0, 0, 0], xf=[0.65, 0, 0, 0], horizon=3000, ts=0.001)
+    # horizon_min = Func.find_smallest_horizon(x0=[0.50, 0, 0, 0], xf=[0.65, 0, 0, 0], ts=0.001)
+    # feasibility, x_opt, u_opt = Func.run_openloop_mpc(x0=[0.50, 0, 0, 0], xf=[0.65, 0, 0, 0], horizon=2000, ts=0.001)

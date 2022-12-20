@@ -37,7 +37,7 @@ class KukaBullet():
         p.setRealTimeSimulation(False)
 
         self.__physics_client_id = physicsClientId
-        self.__robot_urdf = os.path.join(root_path, 'robot/model.urdf')
+        self.__robot_urdf = os.path.join(root_path, 'robot\\model.urdf')
         self.time_step = time_step
         self.jointFrictionForce = 1e-5
         self.gravity_compensate = 4.1
